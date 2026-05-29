@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+coins.db
+*.db-shm
+*.db-wal
+.claude/
+*.zip

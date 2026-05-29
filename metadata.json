@@ -1,0 +1,10 @@
+{
+  "name": "Розпізнавання та база монет",
+  "description": "Повнофункціональний інструмент для розпізнавання монет через камеру чи файли за допомогою AI, ведення колекційного каталогу та готові Python-скрипти для запуску на ПК.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
