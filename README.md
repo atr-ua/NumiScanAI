@@ -1,11 +1,112 @@
+<p align="center">
+  <img src="docs/banner.svg" alt="ATR NumiScan AI" width="100%"/>
+</p>
 
-## Run Locally
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-22+-339933?style=flat-square&logo=node.js&logoColor=white"/>
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black"/>
+  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Gemini_AI-2.0_Flash-4285F4?style=flat-square&logo=google&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white"/>
+</p>
 
-**Prerequisites:**  Node.js
+<p align="center">
+  Персональний нумізматичний каталог з AI-розпізнаванням монет через Google Gemini API.<br/>
+  Завантаж фото — отримай повний опис, країну, метал, рік карбування та ринкову вартість.
+</p>
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Можливості
+
+- **AI-розпізнавання** — ідентифікація монети по одному або двом фото (аверс + реверс) через Gemini API
+- **Автокорекція порядку фото** — AI визначає чи аверс і реверс переплутані місцями та виправляє автоматично
+- **Перевірка дублів** — попередження при спробі додати вже наявну монету
+- **Перемикач моделі Gemini** у інтерфейсі (2.0 Flash, 1.5 Pro та ін.), вибір зберігається між сесіями
+- **Фільтрація за сплавами** — групові категорії (Біметал, Срібло, Бронза, Латунь, Сталь…)
+- **Пагінація каталогу** — 60 монет на сторінку, навігація клавішами `Ctrl+→` / `Ctrl+←`
+- **Ліниве завантаження зображень** — фото роздаються через URL-ендпоїнт, кешуються браузером
+- **Детальна картка монети** — редагування всіх полів, категорії, нотатки, збільшення фото
+- **Карта світу** — choropleth із градієнтним заповненням країн за кількістю монет
+- **Статистика колекції** — десятиліття, метали, країни, рідкість, грейди, категорії
+- **Прапори та ISO-коди** — 100+ країн, включно з історичними (СРСР, НДР, Кайзерейх тощо)
+- **Особисті категорії** — 10 кольорових міток для власної класифікації
+- **REST API** — повний доступ до каталогу ззовні
+
+---
+
+## Стек
+
+| Шар | Технологія |
+|---|---|
+| Backend | Node.js + Express + TypeScript (`tsx`) |
+| Frontend | React 19 + Vite 6 + Tailwind CSS v4 |
+| База даних | SQLite (`sqlite3` async) |
+| AI | Google Gemini API (`@google/genai`) |
+| Карта | `react-simple-maps` (choropleth) |
+
+---
+
+## Швидкий старт
+
+**Вимоги:** Node.js 18+
+
+```bash
+# 1. Встановити залежності
+npm install
+
+# 2. Додати Gemini API ключ
+cp .env.example .env
+# Відредагувати .env → вписати GEMINI_API_KEY
+
+# 3. Запустити
+npm run dev
+```
+
+Сервер запускається на **http://localhost:3001**
+
+> Отримати безкоштовний ключ: [aistudio.google.com](https://aistudio.google.com)
+
+---
+
+## REST API
+
+| Метод | URL | Опис |
+|---|---|---|
+| `GET` | `/api/coins` | Список усіх монет (без фото, швидко) |
+| `GET` | `/api/coins/:id` | Повні дані монети з фотографіями |
+| `GET` | `/api/coins/:id/image/:side` | Фото монети (`obverse` або `reverse`) як бінарний файл |
+| `POST` | `/api/coins` | Зберегти або оновити монету (upsert) |
+| `DELETE` | `/api/coins/:id` | Видалити монету |
+| `POST` | `/api/recognize-coin` | AI-розпізнавання по base64-фото |
+
+---
+
+## Структура проекту
+
+```
+├── server.ts                       # Express сервер + Vite middleware + Gemini API
+├── src/
+│   ├── App.tsx                     # Головний компонент, стан, розпізнавання
+│   ├── db.ts                       # SQLite шар (initDb, CRUD)
+│   ├── types.ts                    # TypeScript типи
+│   ├── components/
+│   │   ├── CoinDatabase.tsx        # Каталог з пагінацією та фільтрами
+│   │   ├── CoinUpload.tsx          # Завантаження фото, камера
+│   │   ├── CollectionAnalytics.tsx # Статистика + карта
+│   │   ├── WorldMap.tsx            # Choropleth карта
+│   │   ├── CountryFlag.tsx         # Прапори країн
+│   │   └── ServicePage.tsx         # REST API документація
+│   └── utils/
+│       ├── countryUtils.ts         # Маппінг назв країн → ISO / прапори
+│       └── categoryUtils.ts        # 10 кольорових категорій
+├── coins.db                        # SQLite база (створюється автоматично, в .gitignore)
+└── .env                            # GEMINI_API_KEY (не комітити!)
+```
+
+---
+
+## Ліцензія
+
+Apache 2.0
