@@ -48,7 +48,8 @@ export default function App() {
       const sameDenom = (coin.denomination || "").toLowerCase().trim() === (recognized.denomination || "").toLowerCase().trim();
       if (sameCountry && sameYear && sameDenom) return true;
 
-      // Fallback: title word-overlap ≥ 60%
+      // Fallback: title word-overlap ≥ 60%, but only within same country AND denomination
+      if (!sameCountry || !sameDenom) return false;
       const wordsA = (coin.title || "").toLowerCase().split(/\W+/).filter(Boolean);
       const wordsB = (recognized.title || "").toLowerCase().split(/\W+/).filter(Boolean);
       if (wordsA.length === 0 || wordsB.length === 0) return false;

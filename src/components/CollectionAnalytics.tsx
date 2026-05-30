@@ -136,8 +136,7 @@ export default function CollectionAnalytics({ coins }: CollectionAnalyticsProps)
         flag: getCountryFlag(name),
         percentage: coins.length > 0 ? (count / coins.length) * 100 : 0,
       }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6); // Top-6 countries
+      .sort((a, b) => b.count - a.count);
   };
 
   const countries = getCountryStats();
@@ -528,23 +527,44 @@ export default function CollectionAnalytics({ coins }: CollectionAnalyticsProps)
               {/* Geographic Flag block */}
               <div className="bg-black/20 border border-white/5 p-5 rounded-2xl space-y-3.5">
                 <h3 className="text-white font-medium text-xs font-mono uppercase tracking-widest text-[#D4AF37] flex items-center gap-2">
-                  <Globe className="h-4 w-4" /> Географічне представлення (Топ країн)
+                  <Globe className="h-4 w-4" /> Країни колекції
+                  <span className="ml-auto text-white/25 normal-case tracking-normal font-sans font-normal text-[11px]">{countries.length} регіонів</span>
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {countries.map((c) => (
-                    <div key={c.name} className="flex items-center justify-between p-3 bg-black/45 hover:bg-black/60 border border-white/5 rounded-xl transition-all">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <CountryFlag country={c.name} className="w-6 h-4.5 object-cover rounded shadow-[0_1px_3px_rgba(0,0,0,0.5)] block shrink-0 border border-white/5" fallbackSizeClass="text-base" />
-                        <span className="text-xs text-white/80 font-semibold truncate font-sans">
-                          {c.name}
-                        </span>
+
+                {/* Top-10 — prominent with progress bar */}
+                <div className="space-y-2.5">
+                  {countries.slice(0, 10).map((c, i) => (
+                    <div key={c.name} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-mono text-white/20 w-4 shrink-0 text-right">{i + 1}</span>
+                          <CountryFlag country={c.name} className="w-6 h-4.5 object-cover rounded shadow-[0_1px_3px_rgba(0,0,0,0.5)] block shrink-0 border border-white/5" fallbackSizeClass="text-base" />
+                          <span className="text-xs text-white/80 font-semibold truncate font-sans">{c.name}</span>
+                        </div>
+                        <span className="text-[#D4AF37] font-mono text-xs font-bold shrink-0">{c.count} шт</span>
                       </div>
-                      <span className="text-[#D4AF37] font-mono text-xs font-bold shrink-0">
-                        {c.count} шт
-                      </span>
+                      <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden ml-6">
+                        <div className="h-full rounded-full bg-gradient-to-r from-[#D4AF37]/60 to-[#D4AF37]/30" style={{ width: `${c.percentage}%` }} />
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                {/* Rest — compact grid */}
+                {countries.length > 10 && (
+                  <div className="pt-2.5 border-t border-white/5 space-y-1.5">
+                    <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Інші ({countries.length - 10})</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+                      {countries.slice(10).map((c) => (
+                        <div key={c.name} className="flex items-center gap-1.5 py-0.5 min-w-0">
+                          <CountryFlag country={c.name} className="w-4 h-3 object-cover rounded shrink-0 border border-white/5" fallbackSizeClass="text-xs" />
+                          <span className="text-[10px] text-white/40 truncate">{c.name}</span>
+                          <span className="text-[10px] font-mono text-white/25 ml-auto shrink-0">{c.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
