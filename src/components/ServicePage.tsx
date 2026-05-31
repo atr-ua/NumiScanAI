@@ -20,6 +20,10 @@ const BATCH_MODELS = [
 export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [batchModel, setBatchModel] = useState(() => localStorage.getItem("batchMintageModel") || "gemini-2.5-flash");
+  const [version, setVersion] = useState<{ hash: string; date: string | null; subject: string | null } | null>(null);
+  React.useEffect(() => {
+    fetch("/api/version").then(r => r.json()).then(setVersion).catch(() => {});
+  }, []);
   const [mintageStatus, setMintageStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const [mintageRunning, setMintageRunning] = useState(false);
 
@@ -151,9 +155,18 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
             </p>
           </div>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-[#D4AF37]/10 text-[#D4AF37] font-mono rounded-full text-xs">
-          <Code className="h-3.5 w-3.5 animate-pulse" /> RESTful Server Active
-        </span>
+        <div className="flex flex-col items-end gap-1.5">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-black/40 border border-[#D4AF37]/10 text-[#D4AF37] font-mono rounded-full text-xs">
+            <Code className="h-3.5 w-3.5 animate-pulse" /> RESTful Server Active
+          </span>
+          {version && (
+            <span className="text-[10px] font-mono text-white/25 flex items-center gap-1.5">
+              <span className="text-white/15">git</span>
+              <span className="text-white/40">{version.hash}</span>
+              {version.date && <span>· {version.date}</span>}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Info Grid */}

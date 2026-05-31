@@ -23,6 +23,20 @@ const getApiKey = () => {
   return process.env.GEMINI_API_KEY || "";
 };
 
+// API: Version info from git
+app.get("/api/version", async (_req, res) => {
+  try {
+    const { execSync } = await import("child_process");
+    const hash    = execSync("git rev-parse --short HEAD",         { encoding: "utf8" }).trim();
+    const date    = execSync("git log -1 --format=%ci HEAD",       { encoding: "utf8" }).trim().slice(0, 10);
+    const subject = execSync("git log -1 --format=%s HEAD",        { encoding: "utf8" }).trim();
+    const tag     = execSync("git describe --tags --abbrev=0 2>nul || echo", { encoding: "utf8" }).trim();
+    res.json({ hash, date, subject, tag: tag || null });
+  } catch {
+    res.json({ hash: "unknown", date: null, subject: null, tag: null });
+  }
+});
+
 // API: Get all coins (without images — fast list)
 app.get("/api/coins", async (_req, res) => {
   try {
