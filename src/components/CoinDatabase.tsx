@@ -9,10 +9,15 @@ import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Dat
 import CountryFlag from "./CountryFlag";
 import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } from "../utils/categoryUtils";
 
+type SortPreset = "date" | "country" | "year" | "country_year_denom";
+
 interface CoinDatabaseProps {
   coins: Coin[];
   onDeleteCoin: (id: string) => Promise<void>;
   onUpdateCoin: (coin: Coin) => Promise<void>;
+  onReorderCoins: (ids: string[]) => Promise<void>;
+  countryFilter?: string;
+  onClearCountryFilter?: () => void;
 }
 
 const formatDateTime = (dateStr?: string) => {
@@ -32,24 +37,59 @@ const formatDateTime = (dateStr?: string) => {
   }
 };
 
-export const fixTitleWithYear = (title: string, year: string | number): string => {
-  if (!year) return title;
-  const yearStr = String(year).trim();
-  if (!yearStr) return title;
+export { fixTitleWithYear } from "../utils/coinUtils";
 
-  // matches ranges like 1963-1990, 1963-90, 1963 - 1990, etc.
-  const rangeRegex = /\b\d{3,4}\s*-\s*\d{2,4}\b/g;
+const SORT_PRESETS: { id: SortPreset; label: string }[] = [
+  { id: "date",              label: "За датою" },
+  { id: "country",          label: "За країною" },
+  { id: "year",             label: "За роком" },
+  { id: "country_year_denom", label: "Країна + рік + номінал" },
+];
 
-  if (rangeRegex.test(title)) {
-    return title.replace(rangeRegex, yearStr);
+const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
+  const sorted = [...coins];
+  switch (preset) {
+    case "country":
+      sorted.sort((a, b) => (a.country || "").localeCompare(b.country || ""));
+      break;
+    case "year":
+      sorted.sort((a, b) =>
+        Number(a.year || 0) - Number(b.year || 0) ||
+        (a.country || "").localeCompare(b.country || "")
+      );
+      break;
+    case "country_year_denom":
+      sorted.sort((a, b) =>
+        (a.country || "").localeCompare(b.country || "") ||
+        Number(a.year || 0) - Number(b.year || 0) ||
+        (a.denomination || "").localeCompare(b.denomination || "")
+      );
+      break;
+    case "date":
+    default:
+      sorted.sort((a, b) =>
+        new Date(b.createdAt || b.recognizedAt || 0).getTime() -
+        new Date(a.createdAt || a.recognizedAt || 0).getTime()
+      );
+      break;
   }
-  return title;
+  return sorted.map((c) => c.id);
 };
 
-export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin }: CoinDatabaseProps) {
+export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter }: CoinDatabaseProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMetalFilter, setSelectedMetalFilter] = useState("Всі");
   const [currentPage, setCurrentPage] = useState(1);
+  const [isReordering, setIsReordering] = useState(false);
+
+  const handleApplySort = async (preset: SortPreset) => {
+    setIsReordering(true);
+    try {
+      await onReorderCoins(getSortedIds(coins, preset));
+    } finally {
+      setIsReordering(false);
+    }
+  };
   const PAGE_SIZE = 60;
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -87,7 +127,10 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin }: Coin
     const matchesMetal =
       selectedMetalFilter === "Всі" || metalToCategory(coin.metal) === selectedMetalFilter;
 
-    return matchesSearch && matchesMetal;
+    const matchesCountry =
+      !countryFilter || coin.country === countryFilter;
+
+    return matchesSearch && matchesMetal && matchesCountry;
   });
 
   const totalPages = Math.ceil(filteredCoins.length / PAGE_SIZE);
@@ -181,6 +224,21 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin }: Coin
           </div>
         </div>
 
+        {/* Active country filter banner */}
+        {countryFilter && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-[#D4AF37]/10 border border-[#D4AF37]/30 rounded-xl">
+            <span className="text-xs text-[#D4AF37] font-semibold">Фільтр країни:</span>
+            <span className="text-xs text-white/80 font-mono">{countryFilter}</span>
+            <button
+              type="button"
+              onClick={onClearCountryFilter}
+              className="ml-auto flex items-center gap-1 text-[10px] text-white/40 hover:text-white border border-white/10 hover:border-white/30 rounded-lg px-2 py-0.5 transition-all cursor-pointer"
+            >
+              <X className="h-3 w-3" /> Очистити
+            </button>
+          </div>
+        )}
+
         {/* Search Input */}
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
@@ -219,6 +277,22 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin }: Coin
               }`}
             >
               {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Sort presets */}
+        <div className="flex flex-wrap gap-1.5 items-center pt-1">
+          <span className="text-xs text-white/40 mr-1">Порядок:</span>
+          {SORT_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => handleApplySort(p.id)}
+              disabled={isReordering}
+              className="cursor-pointer px-3 py-1 rounded-full text-xs font-medium border transition-all bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isReordering ? "…" : p.label}
             </button>
           ))}
         </div>
@@ -832,6 +906,33 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin }: Coin
                     />
                   ) : (
                     <span className="text-xs font-semibold text-white block mt-1 truncate">{selectedCoin.diameter || "—"}</span>
+                  )}
+                </div>
+                <div className="bg-[#1A1A1C] p-3 rounded-lg border border-white/5 text-center">
+                  <span className="text-[9px] text-[#D4AF37]/40 block font-mono uppercase tracking-wider">ТИРАЖ</span>
+                  {isEditing ? (
+                    <input type="text" value={editForm.mintage || ""} onChange={(e) => setEditForm({ ...editForm, mintage: e.target.value })}
+                      className="border border-white/10 bg-black/40 text-white text-xs rounded p-1 w-full text-center mt-1 focus:border-[#D4AF37] focus:outline-none" />
+                  ) : (
+                    <span className="text-xs font-semibold text-white block mt-1 truncate">{selectedCoin.mintage || "—"}</span>
+                  )}
+                </div>
+                <div className="bg-[#1A1A1C] p-3 rounded-lg border border-white/5 text-center">
+                  <span className="text-[9px] text-[#D4AF37]/40 block font-mono uppercase tracking-wider">ТОВЩИНА</span>
+                  {isEditing ? (
+                    <input type="text" value={editForm.thickness || ""} onChange={(e) => setEditForm({ ...editForm, thickness: e.target.value })}
+                      className="border border-white/10 bg-black/40 text-white text-xs rounded p-1 w-full text-center mt-1 focus:border-[#D4AF37] focus:outline-none" />
+                  ) : (
+                    <span className="text-xs font-semibold text-white block mt-1 truncate">{selectedCoin.thickness || "—"}</span>
+                  )}
+                </div>
+                <div className="bg-[#1A1A1C] p-3 rounded-lg border border-white/5 text-center">
+                  <span className="text-[9px] text-[#D4AF37]/40 block font-mono uppercase tracking-wider">ГУРТ</span>
+                  {isEditing ? (
+                    <input type="text" value={editForm.edge || ""} onChange={(e) => setEditForm({ ...editForm, edge: e.target.value })}
+                      className="border border-white/10 bg-black/40 text-white text-xs rounded p-1 w-full text-center mt-1 focus:border-[#D4AF37] focus:outline-none" />
+                  ) : (
+                    <span className="text-xs font-semibold text-white block mt-1 truncate">{selectedCoin.edge || "—"}</span>
                   )}
                 </div>
               </div>

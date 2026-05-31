@@ -48,16 +48,26 @@ export const initDb = async (): Promise<void> => {
       weight           TEXT    DEFAULT '',
       diameter         TEXT    DEFAULT '',
       estimatedValue   TEXT    DEFAULT '',
+      mintage          TEXT    DEFAULT '',
+      thickness        TEXT    DEFAULT '',
+      edge             TEXT    DEFAULT '',
       rarity           TEXT    DEFAULT '',
       grade            TEXT    DEFAULT '',
       historicalContext TEXT   DEFAULT '',
       notes            TEXT    DEFAULT '',
       category         INTEGER,
+      vis_id           INTEGER DEFAULT 0,
       recognizedAt     TEXT    DEFAULT '',
       createdAt        TEXT    DEFAULT '',
       updatedAt        TEXT    DEFAULT ''
     )
   `);
+
+  // Migrations for existing databases
+  try { await run(`ALTER TABLE coins ADD COLUMN vis_id INTEGER DEFAULT 0`); } catch (_) {}
+  try { await run(`ALTER TABLE coins ADD COLUMN mintage TEXT DEFAULT ''`); } catch (_) {}
+  try { await run(`ALTER TABLE coins ADD COLUMN thickness TEXT DEFAULT ''`); } catch (_) {}
+  try { await run(`ALTER TABLE coins ADD COLUMN edge TEXT DEFAULT ''`); } catch (_) {}
 
   // Migrate from legacy JSON on first run
   const { n } = (await get<{ n: number }>("SELECT COUNT(*) as n FROM coins"))!;
@@ -89,6 +99,9 @@ const toRow = (c: any) => ({
   weight:           c.weight ?? "",
   diameter:         c.diameter ?? "",
   estimatedValue:   c.estimatedValue ?? "",
+  mintage:          c.mintage ?? "",
+  thickness:        c.thickness ?? "",
+  edge:             c.edge ?? "",
   rarity:           c.rarity ?? "",
   grade:            c.grade ?? "",
   historicalContext: c.historicalContext ?? "",
@@ -102,11 +115,11 @@ const toRow = (c: any) => ({
 const UPSERT = `
   INSERT INTO coins (
     id, image, imageObverse, imageReverse, title, denomination, country, year,
-    metal, weight, diameter, estimatedValue, rarity, grade, historicalContext,
+    metal, weight, diameter, estimatedValue, mintage, thickness, edge, rarity, grade, historicalContext,
     notes, category, recognizedAt, createdAt, updatedAt
   ) VALUES (
     $id, $image, $imageObverse, $imageReverse, $title, $denomination, $country, $year,
-    $metal, $weight, $diameter, $estimatedValue, $rarity, $grade, $historicalContext,
+    $metal, $weight, $diameter, $estimatedValue, $mintage, $thickness, $edge, $rarity, $grade, $historicalContext,
     $notes, $category, $recognizedAt, $createdAt, $updatedAt
   )
   ON CONFLICT(id) DO UPDATE SET
@@ -115,6 +128,7 @@ const UPSERT = `
     denomination=excluded.denomination, country=excluded.country,
     year=excluded.year, metal=excluded.metal, weight=excluded.weight,
     diameter=excluded.diameter, estimatedValue=excluded.estimatedValue,
+    mintage=excluded.mintage, thickness=excluded.thickness, edge=excluded.edge,
     rarity=excluded.rarity, grade=excluded.grade,
     historicalContext=excluded.historicalContext, notes=excluded.notes,
     category=excluded.category, updatedAt=excluded.updatedAt
@@ -124,7 +138,7 @@ const coinInsertOrReplace = async (c: any): Promise<void> => {
   const r = toRow(c);
   await run(UPSERT, [
     r.id, r.image, r.imageObverse, r.imageReverse, r.title, r.denomination,
-    r.country, r.year, r.metal, r.weight, r.diameter, r.estimatedValue,
+    r.country, r.year, r.metal, r.weight, r.diameter, r.estimatedValue, r.mintage, r.thickness, r.edge,
     r.rarity, r.grade, r.historicalContext, r.notes, r.category,
     r.recognizedAt, r.createdAt, r.updatedAt,
   ]);
@@ -136,12 +150,44 @@ const coinInsertOrReplace = async (c: any): Promise<void> => {
 export const dbGetCoins = (): Promise<any[]> =>
   all(`
     SELECT id, title, denomination, country, year,
-           metal, weight, diameter, estimatedValue, rarity, grade,
-           historicalContext, notes, category, recognizedAt, createdAt, updatedAt,
+           metal, weight, diameter, estimatedValue, mintage, thickness, edge, rarity, grade,
+           historicalContext, notes, category, vis_id, recognizedAt, createdAt, updatedAt,
            (CASE WHEN imageObverse != '' OR image != '' THEN 1 ELSE 0 END) as hasObverse,
            (CASE WHEN imageReverse != '' THEN 1 ELSE 0 END) as hasReverse
-    FROM coins ORDER BY createdAt DESC, recognizedAt DESC
+    FROM coins
+    ORDER BY CASE WHEN vis_id > 0 THEN vis_id ELSE 0 END ASC, createdAt DESC, recognizedAt DESC
   `);
+
+/** Assigns vis_id 1..N to coins in the given order. */
+export const dbReorderCoins = async (ids: string[]): Promise<void> => {
+  await run("BEGIN");
+  try {
+    for (let i = 0; i < ids.length; i++) {
+      await run("UPDATE coins SET vis_id = ? WHERE id = ?", [i + 1, ids[i]]);
+    }
+    await run("COMMIT");
+  } catch (e) {
+    await run("ROLLBACK");
+    throw e;
+  }
+};
+
+/** Returns lightweight coin list for mintage batch update. */
+export const dbGetCoinsForMintage = (): Promise<any[]> =>
+  all(`SELECT id, title, country, year, denomination, metal, mintage FROM coins ORDER BY country, year`);
+
+/** Batch-updates specs (mintage, thickness, edge) for a single coin. */
+export const dbUpdateSpecs = (id: string, specs: { mintage?: string; thickness?: string; edge?: string }): Promise<void> => {
+  const sets: string[] = [];
+  const vals: any[] = [];
+  if (specs.mintage   !== undefined) { sets.push("mintage = ?");   vals.push(specs.mintage); }
+  if (specs.thickness !== undefined) { sets.push("thickness = ?"); vals.push(specs.thickness); }
+  if (specs.edge      !== undefined) { sets.push("edge = ?");      vals.push(specs.edge); }
+  if (!sets.length) return Promise.resolve();
+  sets.push("updatedAt = ?"); vals.push(new Date().toISOString());
+  vals.push(id);
+  return run(`UPDATE coins SET ${sets.join(", ")} WHERE id = ?`, vals);
+};
 
 /** Returns a single coin with full image data. */
 export const dbGetCoin = (id: string): Promise<any> =>

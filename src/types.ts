@@ -15,12 +15,16 @@ export interface Coin {
   metal: string;
   weight?: string;
   diameter?: string;
+  thickness?: string;
+  edge?: string;
+  mintage?: string;
   estimatedValue: string;
   rarity: string;
   grade: string; // e.g. UNC, AU, XF, VF, F, VG, G, etc.
   historicalContext?: string;
   notes?: string;
   category?: number; // index 0–9, see categoryUtils
+  vis_id?: number;   // display order (1..N); 0 = unsorted
   recognizedAt: string;
   createdAt?: string;
   updatedAt?: string;

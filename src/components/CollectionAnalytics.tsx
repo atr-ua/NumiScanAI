@@ -13,9 +13,10 @@ import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } fr
 
 interface CollectionAnalyticsProps {
   coins: Coin[];
+  onFilterByCountry?: (country: string) => void;
 }
 
-export default function CollectionAnalytics({ coins }: CollectionAnalyticsProps) {
+export default function CollectionAnalytics({ coins, onFilterByCountry }: CollectionAnalyticsProps) {
   const [timelineTab, setTimelineTab] = useState<"days" | "months" | "years">("days");
 
   // 1. Portfolio valuations estimation
@@ -531,10 +532,19 @@ export default function CollectionAnalytics({ coins }: CollectionAnalyticsProps)
                   <span className="ml-auto text-white/25 normal-case tracking-normal font-sans font-normal text-[11px]">{countries.length} регіонів</span>
                 </h3>
 
+                {onFilterByCountry && (
+                  <p className="text-[10px] text-white/25 italic">Подвійний клік на країні → фільтр у каталозі</p>
+                )}
+
                 {/* Top-10 — prominent with progress bar */}
                 <div className="space-y-2.5">
                   {countries.slice(0, 10).map((c, i) => (
-                    <div key={c.name} className="space-y-1">
+                    <div
+                      key={c.name}
+                      className={`space-y-1 rounded-lg px-1 -mx-1 transition-colors ${onFilterByCountry ? "cursor-pointer hover:bg-white/5 active:bg-white/10" : ""}`}
+                      onDoubleClick={() => onFilterByCountry?.(c.name)}
+                      title={onFilterByCountry ? `Двічі клікніть щоб фільтрувати: ${c.name}` : undefined}
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[10px] font-mono text-white/20 w-4 shrink-0 text-right">{i + 1}</span>
@@ -556,7 +566,12 @@ export default function CollectionAnalytics({ coins }: CollectionAnalyticsProps)
                     <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Інші ({countries.length - 10})</span>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
                       {countries.slice(10).map((c) => (
-                        <div key={c.name} className="flex items-center gap-1.5 py-0.5 min-w-0">
+                        <div
+                          key={c.name}
+                          className={`flex items-center gap-1.5 py-0.5 min-w-0 rounded transition-colors ${onFilterByCountry ? "cursor-pointer hover:bg-white/5" : ""}`}
+                          onDoubleClick={() => onFilterByCountry?.(c.name)}
+                          title={onFilterByCountry ? `Двічі клікніть щоб фільтрувати: ${c.name}` : undefined}
+                        >
                           <CountryFlag country={c.name} className="w-4 h-3 object-cover rounded shrink-0 border border-white/5" fallbackSizeClass="text-xs" />
                           <span className="text-[10px] text-white/40 truncate">{c.name}</span>
                           <span className="text-[10px] font-mono text-white/25 ml-auto shrink-0">{c.count}</span>

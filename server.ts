@@ -8,7 +8,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin } from "./src/db.js";
+import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs } from "./src/db.js";
 
 dotenv.config();
 
@@ -73,12 +73,102 @@ app.post("/api/coins", async (req, res) => {
   }
 });
 
+// API: Reorder coins by assigning vis_id 1..N
+app.post("/api/coins/reorder", async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids)) return res.status(400).json({ error: "ids must be an array" });
+    await dbReorderCoins(ids);
+    res.json({ success: true, count: ids.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Delete coin
 app.delete("/api/coins/:id", async (req, res) => {
   try {
     await dbDeleteCoin(req.params.id);
     res.json({ success: true, id: req.params.id });
   } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Batch-update mintage for all coins via Gemini (text-only, no images)
+app.post("/api/batch-mintage", async (req, res) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY відсутній" });
+
+  const { overwrite = false, model = "gemini-2.0-flash" } = req.body || {};
+
+  try {
+    const allCoins = await dbGetCoinsForMintage();
+    const isEmpty = (v: string) => !v || v.trim() === "" || v === "Невідомо";
+    const targets = overwrite
+      ? allCoins
+      : allCoins.filter((c) => isEmpty(c.mintage) || isEmpty(c.thickness) || isEmpty(c.edge));
+
+    if (targets.length === 0) return res.json({ updated: 0, skipped: allCoins.length });
+
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+
+    const coinList = targets.map((c) => ({
+      id: c.id,
+      title: c.title,
+      country: c.country,
+      year: c.year,
+      denomination: c.denomination,
+      metal: c.metal,
+    }));
+
+    const CHUNK = 30;
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    const schema = {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id:        { type: Type.STRING },
+            mintage:   { type: Type.STRING },
+            thickness: { type: Type.STRING },
+            edge:      { type: Type.STRING },
+          },
+          required: ["id", "mintage", "thickness", "edge"],
+        },
+      },
+    };
+
+    const promptBase = `You are an expert numismatist with access to comprehensive world coin databases (NGC, PCGS, Krause, national mint reports).
+For each coin provide: mintage (тираж), thickness in mm (товщина), edge type in Ukrainian (гурт: гладкий/рифлений/написовий/сегментований/комбінований).
+Use "Невідомо" only if genuinely unknown. Mintage format: "1 000 000 шт", "~500 000 шт", "50 000 шт (пруф)".
+Coins:\n`;
+
+    let updated = 0;
+    for (let i = 0; i < coinList.length; i += CHUNK) {
+      const chunk = coinList.slice(i, i + CHUNK);
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: { parts: [{ text: promptBase + JSON.stringify(chunk, null, 2) }] },
+          config: schema,
+        });
+        const results: { id: string; mintage?: string; thickness?: string; edge?: string }[] = JSON.parse(response.text || "[]");
+        for (const item of results) {
+          if (item.id) { await dbUpdateSpecs(item.id, { mintage: item.mintage, thickness: item.thickness, edge: item.edge }); updated++; }
+        }
+      } catch (chunkErr: any) {
+        console.error(`[batch-mintage] chunk ${i}-${i + CHUNK} error:`, chunkErr.message);
+      }
+      if (i + CHUNK < coinList.length) await delay(3000);
+    }
+
+    res.json({ updated, total: targets.length, skipped: allCoins.length - targets.length });
+  } catch (e: any) {
+    console.error("[batch-mintage]", e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -183,6 +273,18 @@ Re-examine the coin image(s) with this correction in mind. Update ALL fields tha
               type: Type.STRING,
               description: "Орієнтовна ринкова вага/вартість монети в UAH, наприклад, 'номінал', '10 - 50 грн' або '500 грн'"
             },
+            mintage: {
+              type: Type.STRING,
+              description: "Тираж монети — кількість відкарбованих примірників, наприклад, '1 000 000 шт', '50 000 шт (proof)', 'Невідомо'."
+            },
+            thickness: {
+              type: Type.STRING,
+              description: "Товщина монети в мм, наприклад, '1.8 мм', '2.0 мм'. 'Невідомо' якщо немає даних."
+            },
+            edge: {
+              type: Type.STRING,
+              description: "Тип гурту монети українською: 'гладкий', 'рифлений', 'написовий', 'сегментований', 'комбінований' тощо. 'Невідомо' якщо немає даних."
+            },
             rarity: {
               type: Type.STRING,
               description: "Рівень рідкості монети, наприклад: 'Звичайна', 'Нечаста', 'Рідкісна', 'Колекційна'"
@@ -200,7 +302,7 @@ Re-examine the coin image(s) with this correction in mind. Update ALL fields tha
               description: "true if the two provided images appear to be in reversed order (first image is actually the reverse side, second is the obverse). false otherwise or if only one image was provided."
             }
           },
-          required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext", "imagesSwapped"]
+          required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext"]
         }
       }
     });

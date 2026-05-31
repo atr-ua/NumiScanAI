@@ -23,6 +23,7 @@ export default function App() {
   const [notesInput, setNotesInput] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("selectedModel") || "gemini-3.5-flash");
   const [duplicates, setDuplicates] = useState<Coin[]>([]);
+  const [countryFilter, setCountryFilter] = useState<string | undefined>(undefined);
 
   // Fetch all coins on mount
   useEffect(() => {
@@ -119,7 +120,8 @@ export default function App() {
         setRecentRecognized(null);
         setNotesInput("");
         setDuplicates([]);
-        // Switch tab to show database
+        // Switch tab to show database, clear any active filters
+        setCountryFilter(undefined);
         setActiveTab("database");
         // Instantly focus catalog panel by scrolling slightly
         setTimeout(() => {
@@ -160,6 +162,19 @@ export default function App() {
       }
     } catch (err) {
       console.error("Помилка оновлення відомостей:", err);
+    }
+  };
+
+  const handleReorderCoins = async (ids: string[]) => {
+    try {
+      await fetch("/api/coins/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      await fetchCoins();
+    } catch (err) {
+      console.error("Помилка сортування:", err);
     }
   };
 
@@ -293,6 +308,9 @@ export default function App() {
                 coins={coins}
                 onDeleteCoin={handleDeleteCoin}
                 onUpdateCoin={handleUpdateCoin}
+                onReorderCoins={handleReorderCoins}
+                countryFilter={countryFilter}
+                onClearCountryFilter={() => setCountryFilter(undefined)}
               />
             </div>
           )}
@@ -463,7 +481,13 @@ export default function App() {
 
           {activeTab === "statistics" && (
             <div className="animate-fade-in w-full">
-              <CollectionAnalytics coins={coins} />
+              <CollectionAnalytics
+                coins={coins}
+                onFilterByCountry={(country) => {
+                  setCountryFilter(country);
+                  setActiveTab("database");
+                }}
+              />
             </div>
           )}
 

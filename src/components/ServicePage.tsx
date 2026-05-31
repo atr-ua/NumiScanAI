@@ -4,14 +4,43 @@
  */
 
 import React, { useState } from "react";
-import { Server, Code, Copy, Check, ShieldCheck, Database, FileJson, FileSpreadsheet, Cpu } from "lucide-react";
+import { Server, Code, Copy, Check, ShieldCheck, Database, FileJson, FileSpreadsheet, Cpu, Sparkles, RefreshCw } from "lucide-react";
 
 interface ServicePageProps {
   apiPort?: number;
 }
 
+const BATCH_MODELS = [
+  { id: "gemini-2.5-flash",      label: "2.5 Flash",   note: "500/день" },
+  { id: "gemini-2.5-pro",        label: "2.5 Pro",     note: "25/день · найточніша" },
+  { id: "gemini-3.5-flash",      label: "3.5 Flash",   note: "новітня" },
+  { id: "gemini-3.1-flash-lite", label: "3.1 Lite",    note: "надшвидка" },
+];
+
 export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [batchModel, setBatchModel] = useState(() => localStorage.getItem("batchMintageModel") || "gemini-2.5-flash");
+  const [mintageStatus, setMintageStatus] = useState<{ text: string; ok: boolean } | null>(null);
+  const [mintageRunning, setMintageRunning] = useState(false);
+
+  const handleBatchMintage = async (overwrite = false) => {
+    setMintageRunning(true);
+    setMintageStatus({ text: "⏳ Надсилаю пакет до Gemini…", ok: true });
+    try {
+      const res = await fetch("/api/batch-mintage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overwrite, model: batchModel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || JSON.stringify(data));
+      setMintageStatus({ text: `✓ Оновлено ${data.updated} із ${data.total} монет · пропущено ${data.skipped} вже заповнених`, ok: true });
+    } catch (e: any) {
+      setMintageStatus({ text: `✗ ${e.message}`, ok: false });
+    } finally {
+      setMintageRunning(false);
+    }
+  };
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -163,12 +192,72 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
               Взаємодія із хмарою Google
             </h4>
             <p className="text-xs text-white/50 leading-relaxed font-sans">
-              Для автентичного визначення характеристик монети (номінал, метал, ріккарбування, історичні довідки) сервіс 
-              надсилає фотографію до хмарної платформи Google через інноваційний SDK <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">@google/genai</code>. 
+              Для автентичного визначення характеристик монети (номінал, метал, ріккарбування, історичні довідки) сервіс
+              надсилає фотографію до хмарної платформи Google через інноваційний SDK <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">@google/genai</code>.
               Це гарантує точне та миттєве збагачення даних без додаткових Python-залежностей.
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Batch Mintage */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[#D4AF37]" />
+          <h3 className="text-white font-semibold text-sm font-sans">Пакетне оновлення тиражів (Gemini)</h3>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Один пакетний запит до Gemini для заповнення трьох полів одночасно:
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-1">тираж</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-1">товщина</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-1">гурт</code>.
+          Обробка по 30 монет із паузами. "Заповнити порожні" — лише монети де хоча б одне поле відсутнє.
+        </p>
+
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-[11px] text-white/40 font-mono">Модель:</span>
+          {BATCH_MODELS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => { setBatchModel(m.id); localStorage.setItem("batchMintageModel", m.id); }}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${
+                batchModel === m.id
+                  ? "bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]"
+                  : "bg-transparent border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
+              }`}
+            >
+              {m.label} <span className="opacity-50">· {m.note}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => handleBatchMintage(false)}
+            disabled={mintageRunning}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {mintageRunning ? "Виконується…" : "Заповнити порожні тиражі"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBatchMintage(true)}
+            disabled={mintageRunning}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Перезаписати всі
+          </button>
+        </div>
+
+        {mintageStatus && (
+          <div className={`text-[11px] font-mono px-3 py-2 rounded-xl border ${mintageStatus.ok ? "border-emerald-500/20 text-emerald-400/80 bg-emerald-500/5" : "border-red-500/20 text-red-400/80 bg-red-500/5"}`}>
+            {mintageStatus.text}
+          </div>
+        )}
       </div>
     </div>
   );
