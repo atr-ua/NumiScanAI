@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
-import { Server, Code, Copy, Check, ShieldCheck, Database, FileJson, FileSpreadsheet, Cpu, Sparkles, RefreshCw } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { Server, Code, Copy, Check, ShieldCheck, Database, FileJson, FileSpreadsheet, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 interface ServicePageProps {
   apiPort?: number;
@@ -22,6 +22,52 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
   const [batchModel, setBatchModel] = useState(() => localStorage.getItem("batchMintageModel") || "gemini-2.5-flash");
   const [mintageStatus, setMintageStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const [mintageRunning, setMintageRunning] = useState(false);
+
+  // Numista sync state
+  type NuLog = { type: string; title?: string; fields?: string[]; message?: string };
+  const [nuRunning, setNuRunning] = useState(false);
+  const [nuProgress, setNuProgress] = useState<{ current: number; total: number } | null>(null);
+  const [nuLog, setNuLog] = useState<NuLog[]>([]);
+  const [nuDone, setNuDone] = useState<{ updated: number; notFound: number; errors: number } | null>(null);
+  const nuLogRef = useRef<HTMLDivElement>(null);
+  const esRef = useRef<EventSource | null>(null);
+
+  const handleNumistaSync = (overwrite = false) => {
+    if (esRef.current) esRef.current.close();
+    setNuRunning(true);
+    setNuProgress(null);
+    setNuLog([]);
+    setNuDone(null);
+
+    const es = new EventSource(`/api/numista-sync?overwrite=${overwrite}`);
+    esRef.current = es;
+
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === "start") {
+        setNuProgress({ current: 0, total: data.total });
+      } else if (data.type === "progress") {
+        setNuProgress({ current: data.current, total: data.total });
+      } else if (["updated", "not_found", "no_data", "error"].includes(data.type)) {
+        setNuLog((prev) => {
+          const next = [...prev, data].slice(-100);
+          setTimeout(() => nuLogRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 50);
+          return next;
+        });
+      } else if (data.type === "done") {
+        setNuDone(data);
+        setNuRunning(false);
+        es.close();
+      } else if (data.type === "fatal") {
+        setNuLog((prev) => [...prev, data]);
+        setNuRunning(false);
+        es.close();
+      }
+    };
+    es.onerror = () => { setNuRunning(false); es.close(); };
+  };
+
+  const stopNumista = () => { esRef.current?.close(); setNuRunning(false); };
 
   const handleBatchMintage = async (overwrite = false) => {
     setMintageRunning(true);
@@ -256,6 +302,88 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
         {mintageStatus && (
           <div className={`text-[11px] font-mono px-3 py-2 rounded-xl border ${mintageStatus.ok ? "border-emerald-500/20 text-emerald-400/80 bg-emerald-500/5" : "border-red-500/20 text-red-400/80 bg-red-500/5"}`}>
             {mintageStatus.text}
+          </div>
+        )}
+      </div>
+
+      {/* Numista sync */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-emerald-400" />
+          <h3 className="text-white font-semibold text-sm font-sans">Синхронізація з Numista</h3>
+          <span className="text-[10px] font-mono text-white/30 ml-auto">numista.com API v3</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Оновлює для кожної монети: <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-0.5">вага</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-0.5">діаметр</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-0.5">товщина</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-0.5">гурт</code>
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded mx-0.5">тираж</code>.
+          Пошук по базі Numista (~600 000 монет). Два запити на монету, затримка 400 мс між ними.
+        </p>
+
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={() => handleNumistaSync(false)} disabled={nuRunning}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            <BookOpen className="h-3.5 w-3.5" />
+            {nuRunning ? "Виконується…" : "Заповнити порожні"}
+          </button>
+          <button type="button" onClick={() => handleNumistaSync(true)} disabled={nuRunning}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:border-white/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+            <RefreshCw className="h-3.5 w-3.5" />
+            Перезаписати всі
+          </button>
+          {nuRunning && (
+            <button type="button" onClick={stopNumista}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-all cursor-pointer">
+              <XCircle className="h-3.5 w-3.5" /> Зупинити
+            </button>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        {nuProgress && (
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-[10px] font-mono text-white/40">
+              <span>{nuProgress.current} / {nuProgress.total} монет</span>
+              <span>{Math.round((nuProgress.current / nuProgress.total) * 100)}%</span>
+            </div>
+            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500/60 rounded-full transition-all duration-300"
+                style={{ width: `${(nuProgress.current / nuProgress.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* Done summary */}
+        {nuDone && (
+          <div className="flex gap-3 text-xs font-mono">
+            <span className="text-emerald-400">✓ {nuDone.updated} оновлено</span>
+            <span className="text-white/30">· {nuDone.notFound} не знайдено</span>
+            {nuDone.errors > 0 && <span className="text-red-400">· {nuDone.errors} помилок</span>}
+          </div>
+        )}
+
+        {/* Live log */}
+        {nuLog.length > 0 && (
+          <div ref={nuLogRef} className="max-h-48 overflow-y-auto bg-black/40 border border-white/5 rounded-xl p-3 space-y-0.5 text-[10px] font-mono">
+            {nuLog.map((entry, i) => (
+              <div key={i} className="flex items-start gap-1.5 leading-relaxed">
+                {entry.type === "updated"   && <CheckCircle  className="h-3 w-3 text-emerald-400 shrink-0 mt-0.5" />}
+                {entry.type === "not_found" && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
+                {entry.type === "no_data"   && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
+                {entry.type === "error"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
+                {entry.type === "fatal"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
+                <span className={
+                  entry.type === "updated"   ? "text-white/70" :
+                  entry.type === "error" || entry.type === "fatal" ? "text-red-400/80" :
+                  "text-white/25"
+                }>
+                  {entry.title || entry.message}
+                  {entry.fields?.length ? ` → ${entry.fields.join(", ")}` : ""}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>

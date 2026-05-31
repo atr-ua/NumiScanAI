@@ -317,6 +317,181 @@ Re-examine the coin image(s) with this correction in mind. Update ALL fields tha
   }
 });
 
+// ── Numista helpers ───────────────────────────────────────────────────────────
+
+const NUMISTA_BASE = "https://api.numista.com/api/v3";
+const NUMISTA_SEARCH = "/types";   // coin type search (specs: weight, size, etc.)
+
+const EDGE_UA: Record<string, string> = {
+  plain: "гладкий", smooth: "гладкий",
+  reeded: "рифлений", milled: "рифлений",
+  lettered: "написовий", inscribed: "написовий",
+  segmented: "сегментований", "segmented reeding": "сегментований рифлений",
+  ornamented: "орнаментований", grooved: "рифлений",
+  "plain and reeded sections": "комбінований",
+};
+
+const ISO_TO_EN: Record<string, string> = {
+  ua:"ukraine", us:"united states", gb:"united kingdom", de:"germany",
+  fr:"france", it:"italy", es:"spain", ca:"canada", au:"australia", nz:"new zealand",
+  jp:"japan", cn:"china", ru:"russia", pl:"poland", nl:"netherlands", be:"belgium",
+  se:"sweden", no:"norway", dk:"denmark", fi:"finland", at:"austria", ch:"switzerland",
+  cz:"czechia", sk:"slovakia", hu:"hungary", ro:"romania", bg:"bulgaria", tr:"turkey",
+  gr:"greece", hr:"croatia", rs:"serbia", si:"slovenia", ba:"bosnia and herzegovina",
+  me:"montenegro", mk:"north macedonia", by:"belarus", kz:"kazakhstan", ge:"georgia",
+  am:"armenia", az:"azerbaijan", md:"moldova", lt:"lithuania", lv:"latvia", ee:"estonia",
+  pt:"portugal", ie:"ireland", is:"iceland", lu:"luxembourg", mt:"malta", cy:"cyprus",
+  mc:"monaco", va:"vatican", sm:"san marino", ad:"andorra", li:"liechtenstein",
+  in:"india", pk:"pakistan", bd:"bangladesh", np:"nepal", lk:"sri lanka", af:"afghanistan",
+  ir:"iran", iq:"iraq", sy:"syria", il:"israel", jo:"jordan", sa:"saudi arabia",
+  ae:"united arab emirates", om:"oman", kw:"kuwait", qa:"qatar", bh:"bahrain", ye:"yemen",
+  eg:"egypt", ma:"morocco", dz:"algeria", tn:"tunisia", ly:"libya", sd:"sudan",
+  et:"ethiopia", ke:"kenya", ng:"nigeria", gh:"ghana", za:"south africa", mz:"mozambique",
+  tz:"tanzania", ug:"uganda", zw:"zimbabwe", zm:"zambia", mw:"malawi", bw:"botswana",
+  br:"brazil", ar:"argentina", cl:"chile", co:"colombia", pe:"peru", ve:"venezuela",
+  mx:"mexico", cu:"cuba", do:"dominican republic", bo:"bolivia", ec:"ecuador",
+  py:"paraguay", uy:"uruguay", gt:"guatemala", cr:"costa rica", hn:"honduras",
+  ni:"nicaragua", pa:"panama", sv:"el salvador", sg:"singapore", th:"thailand",
+  ph:"philippines", my:"malaysia", id:"indonesia", vn:"vietnam", kr:"south korea",
+  kp:"north korea", tw:"taiwan", mn:"mongolia", mm:"myanmar",
+};
+
+async function numistaFetch(path: string, apiKey: string): Promise<any> {
+  const sep = path.includes("?") ? "&" : "?";
+  const url = `${NUMISTA_BASE}${path}${sep}api_key=${apiKey}`;
+  const res = await fetch(url, { headers: { "Numista-API-Key": apiKey } });
+  if (!res.ok) throw new Error(`Numista ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+function extractMintageForYear(coin: any, year: number): string | null {
+  // Numista API v3: coin.issues[] → each issue has years[] and quantities[]
+  const issues: any[] = coin.issues || [];
+  for (const issue of issues) {
+    const years: number[] = issue.years || [];
+    if (years.includes(year)) {
+      const qty = issue.mintage ?? issue.quantity;
+      if (qty != null) return Number(qty).toLocaleString("uk-UA") + " шт";
+    }
+  }
+  // fallback: try top-level mintages array
+  const mintages: any[] = coin.mintages || [];
+  const found = mintages.find((m: any) => m.year === year || String(m.year) === String(year));
+  if (found?.mintage) return Number(found.mintage).toLocaleString("uk-UA") + " шт";
+  return null;
+}
+
+// ── Numista sync (SSE) ────────────────────────────────────────────────────────
+app.get("/api/numista-sync", async (req, res) => {
+  const apiKey = process.env.NUMISTA_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "NUMISTA_API_KEY не встановлений у .env" });
+    return;
+  }
+
+  const overwrite = req.query.overwrite === "true";
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  const sse = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  try {
+    const allCoins = await dbGetCoinsForMintage();
+    const isEmpty = (v: any) => !v || String(v).trim() === "" || v === "Невідомо";
+
+    const targets = overwrite
+      ? allCoins
+      : allCoins.filter((c) =>
+          isEmpty(c.weight) || isEmpty(c.diameter) || isEmpty(c.thickness) ||
+          isEmpty(c.edge) || isEmpty(c.mintage)
+        );
+
+    sse({ type: "start", total: targets.length, skipped: allCoins.length - targets.length });
+
+    let updated = 0, notFound = 0, errors = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      const coin = targets[i];
+      sse({ type: "progress", current: i + 1, total: targets.length, title: coin.title, country: coin.country });
+
+      try {
+        // Build search query: denomination number + year
+        const denomNum = (coin.denomination || "").replace(/[^\d.,]/g, "").trim() || coin.denomination || "";
+        const year = Number(coin.year) || 0;
+        const q = encodeURIComponent(`${denomNum} ${coin.year}`.trim());
+
+        const searchData = await numistaFetch(`/types?q=${q}&lang=en&count=10`, apiKey);
+        await delay(400);
+
+        const results: any[] = searchData.types || searchData.coins || [];
+        if (!results.length) { notFound++; sse({ type: "not_found", title: coin.title }); continue; }
+
+        // Match by year range, prefer issuer matching country
+        const isoCode = (coin.country || "").toLowerCase();
+        const countryEn = Object.entries(ISO_TO_EN).find(([, en]) =>
+          (coin.country || "").toLowerCase().includes(en.split(" ")[0])
+        )?.[1] || "";
+
+        let best = results.find((r: any) =>
+          r.min_year <= year && r.max_year >= year &&
+          (r.issuer?.name || "").toLowerCase().includes(countryEn.split(" ")[0])
+        ) || results.find((r: any) => r.min_year <= year && r.max_year >= year)
+          || results[0];
+
+        if (!best) { notFound++; sse({ type: "not_found", title: coin.title }); continue; }
+
+        // Fetch full details
+        const detail = await numistaFetch(`/types/${best.id}?lang=en`, apiKey);
+        await delay(400);
+
+        const specs: Record<string, string> = {};
+
+        if (overwrite || isEmpty(coin.weight))
+          if (detail.weight?.value) specs.weight = `${detail.weight.value} ${detail.weight.unit || "г"}`;
+
+        if (overwrite || isEmpty(coin.diameter))
+          if (detail.size?.value) specs.diameter = `${detail.size.value} ${detail.size.unit || "мм"}`;
+
+        if (overwrite || isEmpty(coin.thickness))
+          if (detail.thickness?.value) specs.thickness = `${detail.thickness.value} ${detail.thickness.unit || "мм"}`;
+
+        if (overwrite || isEmpty(coin.edge)) {
+          const edgeType = detail.edge?.type || detail.edge?.description || "";
+          if (edgeType) specs.edge = EDGE_UA[edgeType.toLowerCase()] || edgeType;
+        }
+
+        if (overwrite || isEmpty(coin.mintage)) {
+          const mintage = extractMintageForYear(detail, year);
+          if (mintage) specs.mintage = mintage;
+        }
+
+        if (Object.keys(specs).length) {
+          await dbUpdateSpecs(coin.id, specs);
+          updated++;
+          sse({ type: "updated", title: coin.title, fields: Object.keys(specs) });
+        } else {
+          notFound++;
+          sse({ type: "no_data", title: coin.title });
+        }
+      } catch (coinErr: any) {
+        errors++;
+        sse({ type: "error", title: coin.title, message: coinErr.message });
+        await delay(1000);
+      }
+    }
+
+    sse({ type: "done", updated, notFound, errors, total: targets.length });
+  } catch (e: any) {
+    sse({ type: "fatal", message: e.message });
+  } finally {
+    res.end();
+  }
+});
+
 // Setup Vite development server or production static serving
 async function startServer() {
   await initDb();

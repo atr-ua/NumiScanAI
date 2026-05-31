@@ -172,21 +172,27 @@ export const dbReorderCoins = async (ids: string[]): Promise<void> => {
   }
 };
 
-/** Returns lightweight coin list for mintage batch update. */
+/** Returns lightweight coin list for batch spec updates. */
 export const dbGetCoinsForMintage = (): Promise<any[]> =>
-  all(`SELECT id, title, country, year, denomination, metal, mintage FROM coins ORDER BY country, year`);
+  all(`SELECT id, title, country, year, denomination, metal, mintage, thickness, edge, weight, diameter FROM coins ORDER BY country, year`);
 
-/** Batch-updates specs (mintage, thickness, edge) for a single coin. */
-export const dbUpdateSpecs = (id: string, specs: { mintage?: string; thickness?: string; edge?: string }): Promise<void> => {
-  const sets: string[] = [];
-  const vals: any[] = [];
-  if (specs.mintage   !== undefined) { sets.push("mintage = ?");   vals.push(specs.mintage); }
-  if (specs.thickness !== undefined) { sets.push("thickness = ?"); vals.push(specs.thickness); }
-  if (specs.edge      !== undefined) { sets.push("edge = ?");      vals.push(specs.edge); }
-  if (!sets.length) return Promise.resolve();
-  sets.push("updatedAt = ?"); vals.push(new Date().toISOString());
-  vals.push(id);
-  return run(`UPDATE coins SET ${sets.join(", ")} WHERE id = ?`, vals);
+/** Updates any combination of spec fields for a single coin. */
+export const dbUpdateSpecs = (id: string, specs: {
+  mintage?: string; thickness?: string; edge?: string;
+  weight?: string; diameter?: string; estimatedValue?: string;
+}): Promise<void> => {
+  const fields: [string, any][] = [
+    ["mintage",        specs.mintage],
+    ["thickness",      specs.thickness],
+    ["edge",           specs.edge],
+    ["weight",         specs.weight],
+    ["diameter",       specs.diameter],
+    ["estimatedValue", specs.estimatedValue],
+  ].filter(([, v]) => v !== undefined) as [string, any][];
+  if (!fields.length) return Promise.resolve();
+  const sets = fields.map(([f]) => `${f} = ?`);
+  const vals = [...fields.map(([, v]) => v), new Date().toISOString(), id];
+  return run(`UPDATE coins SET ${sets.join(", ")}, updatedAt = ? WHERE id = ?`, vals);
 };
 
 /** Returns a single coin with full image data. */
