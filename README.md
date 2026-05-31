@@ -52,7 +52,7 @@
 
 **1.** Завантажте або клонуйте репозиторій:
 ```
-git clone https://github.com/atr-ukr/GemCoin.git
+git clone https://github.com/atr-ua/NumiScanAI.git
 ```
 
 **2.** Запустіть `setup.bat` (правий клік → *Запустити від імені адміністратора* — необов'язково):
@@ -96,8 +96,8 @@ update.bat
 **Вимоги:** Node.js 18+, Git
 
 ```bash
-git clone https://github.com/atr-ukr/GemCoin.git
-cd GemCoin
+git clone https://github.com/atr-ua/NumiScanAI.git
+cd NumiScanAI
 npm install
 ```
 

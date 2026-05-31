@@ -63,7 +63,7 @@ Write-Step "Перевірка репозиторію..."
 $isRepo = (& git rev-parse --is-inside-work-tree 2>$null) -eq "true"
 if (-not $isRepo) {
     Write-Err "Ця папка не є git-репозиторієм."
-    Write-Host "  Завантажте проект через: git clone https://github.com/atr-ua/CoinBase" -ForegroundColor Gray
+    Write-Host "  Завантажте проект через: git clone https://github.com/atr-ua/NumiScanAI" -ForegroundColor Gray
     Read-Host "  Натисніть Enter для виходу" | Out-Null
     exit 1
 }
