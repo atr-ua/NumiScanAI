@@ -1,6 +1,7 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * @author Andrii (ATR) Tarasenko
  */
 
 import React, { useState, useRef } from "react";
@@ -317,6 +318,13 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
             {mintageStatus.text}
           </div>
         )}
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-white/5 pt-4 flex items-center justify-end">
+        <span className="text-[10px] font-mono text-white/20">
+          © Andrii (ATR) Tarasenko · Apache 2.0
+        </span>
       </div>
 
       {/* Numista sync */}

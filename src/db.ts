@@ -1,6 +1,7 @@
 /**
  * SQLite database layer — replaces JSON file storage.
  * Uses the `sqlite3` async package wrapped in Promises.
+ * @author Andrii (ATR) Tarasenko
  */
 
 import sqlite3 from "sqlite3";

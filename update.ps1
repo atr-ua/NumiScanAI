@@ -1,4 +1,5 @@
 # GemCoin — скрипт оновлення
+# Автор: Andrii (ATR) Tarasenko
 $Host.UI.RawUI.WindowTitle = "GemCoin — Оновлення"
 $ErrorActionPreference = "SilentlyContinue"
 

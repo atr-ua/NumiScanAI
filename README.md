@@ -109,4 +109,4 @@ npm run dev
 
 ## Ліцензія
 
-Apache 2.0
+Apache 2.0 © Andrii (ATR) Tarasenko

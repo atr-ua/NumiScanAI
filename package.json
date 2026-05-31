@@ -1,7 +1,9 @@
 {
-  "name": "react-example",
+  "name": "gemcoin",
+  "description": "ATR NumiScan AI — нумізматичний каталог з AI-розпізнаванням монет",
+  "author": "Andrii (ATR) Tarasenko",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo.
 echo  ╔══════════════════════════════════╗
-echo  ║   ATR NumiScan AI  —  GemCoin   ║
+echo  ║   ATR NumiScan AI  —  GemCoin    ║
 echo  ╚══════════════════════════════════╝
 echo.
 echo  Запуск сервера на http://localhost:3001
