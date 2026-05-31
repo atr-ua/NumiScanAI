@@ -48,25 +48,71 @@
 
 ---
 
-## Швидкий старт
+## Встановлення на Windows
 
-**Вимоги:** Node.js 18+
+**1.** Завантажте або клонуйте репозиторій:
+```
+git clone https://github.com/atr-ukr/GemCoin.git
+```
+
+**2.** Запустіть `setup.bat` (правий клік → *Запустити від імені адміністратора* — необов'язково):
+
+```
+setup.bat
+```
+
+Скрипт автоматично:
+- перевіряє наявність **Node.js 18+** (пропонує відкрити nodejs.org, якщо не знайдено)
+- встановлює всі залежності (`npm install`)
+- запитує **Gemini API ключ** (та опційно Numista API ключ) і зберігає в `.env`
+- створює ярлик **GemCoin** на робочому столі
+- пропонує запустити відразу після встановлення
+
+> Безкоштовний Gemini API ключ: [aistudio.google.com](https://aistudio.google.com)
+
+### Запуск
+
+Після встановлення — двічі клікніть **ярлик GemCoin** на робочому столі або запустіть `start.bat`.  
+Сервер стартує на **http://localhost:3001**, браузер відкривається автоматично.
+
+### Оновлення
+
+Для отримання нових версій запустіть `update.bat`:
+
+```
+update.bat
+```
+
+Скрипт:
+- перевіряє наявність **Git** (пропонує встановити через winget, якщо не знайдено)
+- показує список нових змін з GitHub
+- зберігає локальні зміни (`git stash`) перед оновленням
+- виконує `git pull` та автоматично запускає `npm install`, якщо змінився `package.json`
+
+---
+
+## Ручне встановлення (розробники / інші ОС)
+
+**Вимоги:** Node.js 18+, Git
 
 ```bash
-# 1. Встановити залежності
+git clone https://github.com/atr-ukr/GemCoin.git
+cd GemCoin
 npm install
+```
 
-# 2. Додати Gemini API ключ
-cp .env.example .env
-# Відредагувати .env → вписати GEMINI_API_KEY
+Створіть файл `.env`:
+```
+GEMINI_API_KEY=ваш_ключ
+NUMISTA_API_KEY=ваш_ключ   # необов'язково
+```
 
-# 3. Запустити
+Запустіть:
+```bash
 npm run dev
 ```
 
 Сервер запускається на **http://localhost:3001**
-
-> Отримати безкоштовний ключ: [aistudio.google.com](https://aistudio.google.com)
 
 ---
 
@@ -86,6 +132,9 @@ npm run dev
 ## Структура проекту
 
 ```
+├── setup.bat / setup.ps1           # Встановлення: Node.js, npm, .env, ярлик на робочому столі
+├── start.bat                       # Запуск сервера + автовідкриття браузера
+├── update.bat / update.ps1         # Оновлення з GitHub (git pull + npm install)
 ├── server.ts                       # Express сервер + Vite middleware + Gemini API
 ├── src/
 │   ├── App.tsx                     # Головний компонент, стан, розпізнавання
@@ -97,12 +146,12 @@ npm run dev
 │   │   ├── CollectionAnalytics.tsx # Статистика + карта
 │   │   ├── WorldMap.tsx            # Choropleth карта
 │   │   ├── CountryFlag.tsx         # Прапори країн
-│   │   └── ServicePage.tsx         # REST API документація
+│   │   └── ServicePage.tsx         # REST API документація + сервісні інструменти
 │   └── utils/
 │       ├── countryUtils.ts         # Маппінг назв країн → ISO / прапори
 │       └── categoryUtils.ts        # 10 кольорових категорій
 ├── coins.db                        # SQLite база (створюється автоматично, в .gitignore)
-└── .env                            # GEMINI_API_KEY (не комітити!)
+└── .env                            # GEMINI_API_KEY, NUMISTA_API_KEY (не комітити!)
 ```
 
 ---
