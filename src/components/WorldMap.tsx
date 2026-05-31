@@ -10,7 +10,7 @@ import { Coin } from "../types";
 import { getCountryIsoCode } from "../utils/countryUtils";
 import CountryFlag from "./CountryFlag";
 
-const GEO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const GEO_URL = "/countries-110m.json";
 
 interface WorldMapProps {
   coins: Coin[];
