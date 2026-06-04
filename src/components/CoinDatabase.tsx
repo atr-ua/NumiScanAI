@@ -6,9 +6,10 @@
 
 import React, { useState, useEffect } from "react";
 import { Coin } from "../types";
-import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload } from "lucide-react";
+import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import CountryFlag from "./CountryFlag";
 import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } from "../utils/categoryUtils";
+import { fixTitleWithYear } from "../utils/coinUtils";
 
 type SortPreset = "date" | "country" | "year" | "country_year_denom";
 
@@ -95,10 +96,17 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
-  const [zoomedImage, setZoomedImage] = useState<{ src: string; title: string; subtitle?: string } | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<{
+    src: string; title: string; subtitle?: string;
+    coinId?: string; side?: "obverse" | "reverse";
+    hasObverse?: boolean; hasReverse?: boolean;
+  } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Buffer state to edit details
   const [editForm, setEditForm] = useState<Partial<Coin>>({});
+  const detailAbortRef = React.useRef<AbortController | null>(null);
+  const filteredCoinsRef = React.useRef<Coin[]>([]);
 
   const metalToCategory = (metal: string): string => {
     const m = (metal || "").toLowerCase();
@@ -136,6 +144,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
 
   const totalPages = Math.ceil(filteredCoins.length / PAGE_SIZE);
   const paginatedCoins = filteredCoins.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  filteredCoinsRef.current = filteredCoins;
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -156,14 +165,55 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     return () => window.removeEventListener("keydown", handleKey);
   }, [totalPages]);
 
+  useEffect(() => {
+    if (!zoomedImage) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setZoomedImage(null); return; }
+      if (!zoomedImage.coinId || e.ctrlKey) return;
+      if (e.key === "ArrowRight" && zoomedImage.side === "obverse" && zoomedImage.hasReverse) {
+        e.preventDefault();
+        setZoomedImage({ ...zoomedImage, src: `/api/coins/${zoomedImage.coinId}/image/reverse`, subtitle: "Реверс (RV)", side: "reverse" });
+      } else if (e.key === "ArrowLeft" && zoomedImage.side === "reverse" && zoomedImage.hasObverse) {
+        e.preventDefault();
+        setZoomedImage({ ...zoomedImage, src: `/api/coins/${zoomedImage.coinId}/image/obverse`, subtitle: "Аверс (AV)", side: "obverse" });
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const list = filteredCoinsRef.current;
+        const idx = list.findIndex((c) => c.id === zoomedImage.coinId);
+        const nextIdx = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+        if (nextIdx < 0 || nextIdx >= list.length) return;
+        const next = list[nextIdx];
+        const preferSide = zoomedImage.side ?? "obverse";
+        const hasPref = preferSide === "obverse" ? Boolean(next.hasObverse) : Boolean(next.hasReverse);
+        const hasAlt  = preferSide === "obverse" ? Boolean(next.hasReverse) : Boolean(next.hasObverse);
+        if (!hasPref && !hasAlt) return;
+        const side: "obverse" | "reverse" = hasPref ? preferSide : (preferSide === "obverse" ? "reverse" : "obverse");
+        setZoomedImage({
+          src: `/api/coins/${next.id}/image/${side}`,
+          title: next.title,
+          subtitle: side === "obverse" ? "Аверс (AV)" : "Реверс (RV)",
+          coinId: next.id,
+          side,
+          hasObverse: Boolean(next.hasObverse),
+          hasReverse: Boolean(next.hasReverse),
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [zoomedImage]);
+
   const handleOpenDetail = async (coin: Coin) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     setSelectedCoin(coin);
     setEditForm(coin);
     setIsEditing(false);
     setShowConfirmDelete(false);
-    // Lazy-load full image data from DB
+    setSaveError(null);
     try {
-      const res = await fetch(`/api/coins/${coin.id}`);
+      const res = await fetch(`/api/coins/${coin.id}`, { signal: controller.signal });
       if (res.ok) {
         const full = await res.json();
         setSelectedCoin(full);
@@ -175,23 +225,33 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
   const handleCloseDetail = () => {
     setSelectedCoin(null);
     setShowConfirmDelete(false);
+    setSaveError(null);
   };
 
   const handleSaveEdit = async () => {
-    if (selectedCoin && editForm) {
-      const refinedTitle = editForm.year && editForm.title
-        ? fixTitleWithYear(editForm.title, editForm.year)
-        : editForm.title || selectedCoin.title;
+    if (!selectedCoin) return;
+    detailAbortRef.current?.abort();
+    detailAbortRef.current = null;
+    setSaveError(null);
+    try {
+      const year = editForm.year ?? selectedCoin.year;
+      const title = editForm.title ?? selectedCoin.title;
+      const refinedTitle = year ? fixTitleWithYear(title, year) : title;
 
       const updated: Coin = {
         ...selectedCoin,
         ...editForm,
+        year,
         title: refinedTitle,
         createdAt: selectedCoin.createdAt || selectedCoin.recognizedAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       } as Coin;
       await onUpdateCoin(updated);
       setSelectedCoin(updated);
+    } catch (err: any) {
+      console.error("Помилка збереження монети:", err);
+      setSaveError(err?.message || "Помилка збереження");
+    } finally {
       setIsEditing(false);
     }
   };
@@ -248,8 +308,17 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
             placeholder="Пошук за назвою, країною, металом чи роком..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            className="w-full pl-10 pr-4 py-2.5 bg-black/40 border border-white/10 focus:border-[#D4AF37] focus:bg-black/60 text-sm rounded-xl outline-none transition-all placeholder:text-white/30 text-white"
+            className="w-full pl-10 pr-9 py-2.5 bg-black/40 border border-white/10 focus:border-[#D4AF37] focus:bg-black/60 text-sm rounded-xl outline-none transition-all placeholder:text-white/30 text-white"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(""); setCurrentPage(1); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Filter Chips */}
@@ -323,11 +392,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
-                      setZoomedImage({
-                        src: `/api/coins/${coin.id}/image/obverse`,
-                        title: coin.title,
-                        subtitle: "Аверс (AV)"
-                      });
+                      setZoomedImage({ src: `/api/coins/${coin.id}/image/obverse`, title: coin.title, subtitle: "Аверс (AV)", coinId: coin.id, side: "obverse", hasObverse: Boolean(coin.hasObverse), hasReverse: Boolean(coin.hasReverse) });
                     }}
                     className="w-1/2 h-full bg-black/45 hover:bg-black/80 border border-white/5 hover:border-[#D4AF37]/35 rounded-xl overflow-hidden flex items-center justify-center relative cursor-zoom-in transition-all"
                   >
@@ -345,11 +410,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
-                      setZoomedImage({
-                        src: `/api/coins/${coin.id}/image/reverse`,
-                        title: coin.title,
-                        subtitle: "Реверс (RV)"
-                      });
+                      setZoomedImage({ src: `/api/coins/${coin.id}/image/reverse`, title: coin.title, subtitle: "Реверс (RV)", coinId: coin.id, side: "reverse", hasObverse: Boolean(coin.hasObverse), hasReverse: Boolean(coin.hasReverse) });
                     }}
                     className="w-1/2 h-full bg-black/45 hover:bg-black/80 border border-white/5 hover:border-[#D4AF37]/35 rounded-xl overflow-hidden flex items-center justify-center relative cursor-zoom-in transition-all"
                   >
@@ -370,11 +431,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
-                        setZoomedImage({
-                          src: `/api/coins/${coin.id}/image/obverse`,
-                          title: coin.title,
-                          subtitle: "Аверс (AV)"
-                        });
+                        setZoomedImage({ src: `/api/coins/${coin.id}/image/obverse`, title: coin.title, subtitle: "Аверс (AV)", coinId: coin.id, side: "obverse", hasObverse: Boolean(coin.hasObverse), hasReverse: Boolean(coin.hasReverse) });
                       }}
                       className="w-full h-full flex items-center justify-center cursor-zoom-in relative"
                     >
@@ -392,11 +449,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                     <div
                       onClick={(e) => {
                         e.stopPropagation();
-                        setZoomedImage({
-                          src: `/api/coins/${coin.id}/image/reverse`,
-                          title: coin.title,
-                          subtitle: "Реверс (RV)"
-                        });
+                        setZoomedImage({ src: `/api/coins/${coin.id}/image/reverse`, title: coin.title, subtitle: "Реверс (RV)", coinId: coin.id, side: "reverse", hasObverse: Boolean(coin.hasObverse), hasReverse: Boolean(coin.hasReverse) });
                       }}
                       className="w-full h-full flex items-center justify-center cursor-zoom-in relative"
                     >
@@ -603,11 +656,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                             className={`h-full w-full object-contain p-1 ${!isEditing ? "cursor-zoom-in hover:scale-[1.05] transition-transform duration-300" : ""}`}
                             onClick={() => {
                               if (!isEditing) {
-                                setZoomedImage({
-                                  src: editForm.imageObverse || selectedCoin.imageObverse!,
-                                  title: selectedCoin.title,
-                                  subtitle: "Аверс (AV)"
-                                });
+                                setZoomedImage({ src: editForm.imageObverse || selectedCoin.imageObverse!, title: selectedCoin.title, subtitle: "Аверс (AV)", coinId: selectedCoin.id, side: "obverse", hasObverse: !!(editForm.imageObverse || selectedCoin.imageObverse), hasReverse: !!(editForm.imageReverse || selectedCoin.imageReverse) });
                               }
                             }}
                           />
@@ -653,11 +702,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                             className={`h-full w-full object-contain p-1 ${!isEditing ? "cursor-zoom-in hover:scale-[1.05] transition-transform duration-300" : ""}`}
                             onClick={() => {
                               if (!isEditing) {
-                                setZoomedImage({
-                                  src: editForm.imageReverse || selectedCoin.imageReverse!,
-                                  title: selectedCoin.title,
-                                  subtitle: "Реверс (RV)"
-                                });
+                                setZoomedImage({ src: editForm.imageReverse || selectedCoin.imageReverse!, title: selectedCoin.title, subtitle: "Реверс (RV)", coinId: selectedCoin.id, side: "reverse", hasObverse: !!(editForm.imageObverse || selectedCoin.imageObverse), hasReverse: !!(editForm.imageReverse || selectedCoin.imageReverse) });
                               }
                             }}
                           />
@@ -739,17 +784,8 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                       {isEditing ? (
                         <input
                           type="text"
-                          value={editForm.year || ""}
-                          onChange={(e) => {
-                            const newYear = e.target.value;
-                            const currentTitle = editForm.title || "";
-                            const newTitle = fixTitleWithYear(currentTitle, newYear);
-                            setEditForm({
-                              ...editForm,
-                              year: newYear,
-                              title: newTitle
-                            });
-                          }}
+                          value={editForm.year ?? ""}
+                          onChange={(e) => { const v = e.target.value; setEditForm((prev) => ({ ...prev, year: v })); }}
                           className="border border-white/10 bg-black/50 text-white text-xs rounded px-1.5 py-0.5 w-20 font-bold focus:border-[#D4AF37] focus:outline-none"
                         />
                       ) : (
@@ -1008,12 +1044,17 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {saveError && !isEditing && (
+                  <span className="text-[11px] text-red-400 font-mono bg-red-500/10 border border-red-500/20 px-2 py-1 rounded-lg">
+                    {saveError}
+                  </span>
+                )}
                 {isEditing ? (
                   <>
                     <button
                       type="button"
-                      onClick={() => setIsEditing(false)}
+                      onClick={() => { setIsEditing(false); setSaveError(null); }}
                       className="bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 px-4 py-2 text-xs font-medium rounded-xl transition-all outline-none cursor-pointer"
                     >
                       Відхилити
@@ -1029,7 +1070,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setIsEditing(true)}
+                    onClick={() => { setIsEditing(true); setSaveError(null); }}
                     className="bg-[#D4AF37] hover:bg-[#c4a030] text-[#0A0A0B] font-bold px-5 py-2 text-xs rounded-xl flex items-center gap-1.5 shadow-lg shadow-[#D4AF37]/25 transition-all outline-none cursor-pointer"
                   >
                     <Edit2 className="h-4 w-4" /> Редагувати поля
@@ -1043,7 +1084,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
 
       {/* Zoomed Image Viewer Modal Overlay */}
       {zoomedImage && (
-        <div 
+        <div
           className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/95 backdrop-blur-xl animate-fade-in p-4 sm:p-6"
           onClick={() => setZoomedImage(null)}
         >
@@ -1052,14 +1093,39 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
             type="button"
             onClick={() => setZoomedImage(null)}
             className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/10 rounded-full text-white/80 hover:text-white transition-all cursor-pointer z-[80] shadow-lg"
-            title="Закрити (Close)"
+            title="Закрити (Esc)"
           >
             <X className="h-6 w-6" />
           </button>
 
+          {/* Left nav arrow — reverse → obverse */}
+          {zoomedImage.coinId && zoomedImage.side === "reverse" && zoomedImage.hasObverse && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setZoomedImage({ ...zoomedImage, src: `/api/coins/${zoomedImage.coinId}/image/obverse`, subtitle: "Аверс (AV)", side: "obverse" }); }}
+              className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 p-2.5 bg-white/10 hover:bg-[#D4AF37]/20 active:scale-95 border border-white/10 hover:border-[#D4AF37]/40 rounded-full text-white/70 hover:text-[#D4AF37] transition-all cursor-pointer z-[80] shadow-lg"
+              title="Аверс (←)"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+          )}
+
+          {/* Right nav arrow — obverse → reverse */}
+          {zoomedImage.coinId && zoomedImage.side === "obverse" && zoomedImage.hasReverse && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setZoomedImage({ ...zoomedImage, src: `/api/coins/${zoomedImage.coinId}/image/reverse`, subtitle: "Реверс (RV)", side: "reverse" }); }}
+              className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 p-2.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/10 hover:border-white/30 rounded-full text-white/70 hover:text-white transition-all cursor-pointer z-[80] shadow-lg"
+              title="Реверс (→)"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          )}
+
           {/* Centered Content Container */}
-          <div 
+          <div
             className="relative flex flex-col items-center max-w-4xl w-full text-center animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header / Caption info above image */}
             <div className="mb-4 sm:mb-6 select-none max-w-2xl px-4">
@@ -1081,9 +1147,11 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
               />
             </div>
 
-            {/* Click to dismiss helper text */}
-            <p className="mt-4 sm:mt-5 text-[11px] font-mono tracking-wide text-white/40 select-none flex items-center gap-1.5 bg-white/5 border border-white/5 py-1.5 px-3 rounded-full hover:bg-white/10 hover:text-white/60 transition-colors cursor-pointer" onClick={() => setZoomedImage(null)}>
-              💡 Натисніть у будь-якому місці екрана чи кнопку куті, щоб закрити
+            {/* Hint */}
+            <p className="mt-4 sm:mt-5 text-[11px] font-mono tracking-wide text-white/40 select-none flex items-center gap-1.5 bg-white/5 border border-white/5 py-1.5 px-3 rounded-full" onClick={(e) => { e.stopPropagation(); setZoomedImage(null); }}>
+              {zoomedImage.coinId && (zoomedImage.hasObverse || zoomedImage.hasReverse)
+                ? "← → аверс/реверс · ↑ ↓ монета · Esc закрити"
+                : "Esc або клік поза межами — закрити"}
             </p>
           </div>
         </div>

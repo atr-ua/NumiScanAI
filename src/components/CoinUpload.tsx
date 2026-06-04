@@ -26,6 +26,7 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const obverseInputRef = useRef<HTMLInputElement | null>(null);
   const reverseInputRef = useRef<HTMLInputElement | null>(null);
+  const bothInputRef = useRef<HTMLInputElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,18 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
     }
     return () => { stopCamera(); };
   }, [cameraTarget]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== "F9") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      bothInputRef.current?.click();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, []);
 
   const startCamera = async () => {
     setCameraError(null);
@@ -106,6 +119,11 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
   const handleRecognizeClick = () => {
     if (obverseImage) onRecognize(obverseImage, reverseImage ?? undefined);
     else if (reverseImage) onRecognize(reverseImage);
+  };
+
+  const handleBothFiles = (files: FileList) => {
+    if (files[0]) processFile(files[0], "obverse");
+    if (files[1]) processFile(files[1], "reverse");
   };
 
   const hasAny = !!(obverseImage || reverseImage);
@@ -210,10 +228,27 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
 
       {/* Two-slot workspace */}
       {!cameraTarget && (
-        <div className="grid grid-cols-2 gap-4">
-          <SlotCard slot="obverse" image={obverseImage} label="Аверс (лицьова сторона)" />
-          <SlotCard slot="reverse" image={reverseImage} label="Реверс (зворотна сторона)" />
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <SlotCard slot="obverse" image={obverseImage} label="Аверс (лицьова сторона)" />
+            <SlotCard slot="reverse" image={reverseImage} label="Реверс (зворотна сторона)" />
+          </div>
+          <button
+            type="button"
+            onClick={() => bothInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-white/10 hover:border-[#D4AF37]/40 text-white/30 hover:text-[#D4AF37] text-xs rounded-xl transition-all cursor-pointer"
+          >
+            <Upload className="h-3.5 w-3.5" /> Вибрати аверс і реверс одночасно
+          </button>
+          <input
+            type="file"
+            ref={bothInputRef}
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => { if (e.target.files) handleBothFiles(e.target.files); }}
+          />
+        </>
       )}
 
       {/* Recognize button */}

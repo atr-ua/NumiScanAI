@@ -26,6 +26,8 @@ export interface Coin {
   notes?: string;
   category?: number; // index 0–9, see categoryUtils
   vis_id?: number;   // display order (1..N); 0 = unsorted
+  hasObverse?: number; // 0 or 1, computed server-side
+  hasReverse?: number; // 0 or 1, computed server-side
   recognizedAt: string;
   createdAt?: string;
   updatedAt?: string;

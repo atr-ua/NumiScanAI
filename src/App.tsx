@@ -10,7 +10,7 @@ import CoinUpload from "./components/CoinUpload";
 import CoinDatabase, { fixTitleWithYear } from "./components/CoinDatabase";
 import CollectionAnalytics from "./components/CollectionAnalytics";
 import ServicePage from "./components/ServicePage";
-import { Coins, Database, ShieldCheck, Sparkles, Award, Plus, Compass, Server, AlertTriangle } from "lucide-react";
+import { Database, Sparkles, Award, Plus, Compass, Server, AlertTriangle } from "lucide-react";
 import CountryFlag from "./components/CountryFlag";
 
 export default function App() {
@@ -25,10 +25,19 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("selectedModel") || "gemini-3.5-flash");
   const [duplicates, setDuplicates] = useState<Coin[]>([]);
   const [countryFilter, setCountryFilter] = useState<string | undefined>(undefined);
-
   // Fetch all coins on mount
   useEffect(() => {
     fetchCoins();
+  }, []);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== "F8") return;
+      e.preventDefault();
+      setActiveTab("recognition");
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   }, []);
 
   const fetchCoins = async () => {
@@ -152,18 +161,21 @@ export default function App() {
 
   // Update coin details
   const handleUpdateCoin = async (updatedCoin: Coin) => {
-    try {
-      const res = await fetch("/api/coins", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedCoin),
-      });
-      if (res.ok) {
-        setCoins(coins.map((c) => (c.id === updatedCoin.id ? updatedCoin : c)));
-      }
-    } catch (err) {
-      console.error("Помилка оновлення відомостей:", err);
+    const res = await fetch("/api/coins", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedCoin),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
     }
+    const coinForList = {
+      ...updatedCoin,
+      hasObverse: updatedCoin.imageObverse ? 1 : 0,
+      hasReverse: updatedCoin.imageReverse ? 1 : 0,
+    };
+    setCoins((prev) => prev.map((c) => (c.id === updatedCoin.id ? coinForList : c)));
   };
 
   const handleReorderCoins = async (ids: string[]) => {
@@ -504,7 +516,7 @@ export default function App() {
       <footer className="border-t border-white/5 bg-[#0D0D0E] py-6 mt-12 text-center text-[10px] text-white/30 font-mono">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <p>
-            © 2026 ЛОКАЛЬНИЙ ПУЛ ТА БАЗА РОЗПІЗНАННЯ МОНЕТ. Всі права збережено.
+            ATR © 2026 ЛОКАЛЬНИЙ ПУЛ ТА БАЗА РОЗПІЗНАННЯ МОНЕТ. Всі права збережено.
           </p>
           <div className="flex justify-center gap-6">
             <span>ENGINE: Node.js (v20+)</span>
