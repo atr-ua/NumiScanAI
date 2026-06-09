@@ -9,7 +9,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
-import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs } from "./src/db.js";
+import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds } from "./src/db.js";
+import { generateCatalogPdf } from "./src/pdfExport.js";
 
 dotenv.config();
 
@@ -82,6 +83,23 @@ app.get("/api/coins/:id", async (req, res) => {
 app.post("/api/coins", async (req, res) => {
   try {
     const saved = await dbSaveCoin(req.body);
+    res.json(saved);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Swap obverse and reverse images for a coin
+app.post("/api/coins/:id/swap-images", async (req, res) => {
+  try {
+    const coin = await dbGetCoin(req.params.id);
+    if (!coin) return res.status(404).json({ error: "Not found" });
+    const saved = await dbSaveCoin({
+      ...coin,
+      imageObverse: coin.imageReverse || "",
+      imageReverse: coin.imageObverse || "",
+      updatedAt: new Date().toISOString(),
+    });
     res.json(saved);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -184,6 +202,35 @@ Coins:\n`;
     res.json({ updated, total: targets.length, skipped: allCoins.length - targets.length });
   } catch (e: any) {
     console.error("[batch-mintage]", e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: List available Gemini models that support generateContent
+app.get("/api/gemini-models", async (_req, res) => {
+  const apiKey = getApiKey();
+  if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY відсутній" });
+
+  try {
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
+    const pager = await ai.models.list();
+
+    const models: { id: string; displayName: string; description: string }[] = [];
+    for await (const m of pager) {
+      const id = (m.name || "").replace("models/", "");
+      // Keep only text/multimodal gemini models suitable for coin recognition
+      const skip = ["embed", "imagen", "veo", "tts", "aqa", "audio", "live", "robotics", "computer-use", "-image"];
+      if (id.startsWith("gemini") && !skip.some(s => id.includes(s))) {
+        models.push({
+          id,
+          displayName: m.displayName || id,
+          description: m.description || "",
+        });
+      }
+    }
+
+    res.json(models);
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -504,6 +551,25 @@ app.get("/api/numista-sync", async (req, res) => {
     sse({ type: "fatal", message: e.message });
   } finally {
     res.end();
+  }
+});
+
+// API: Generate PDF catalog for a given ordered list of coin IDs
+app.post("/api/export/pdf", async (req, res) => {
+  try {
+    const { ids, withImages = true, filterSummary = "" } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "ids must be a non-empty array" });
+    }
+    const coins = await dbGetCoinsByIds(ids);
+    const pdf   = await generateCatalogPdf(coins, withImages, filterSummary);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="catalog-${Date.now()}.pdf"`);
+    res.setHeader("Content-Length", pdf.length);
+    res.send(pdf);
+  } catch (e: any) {
+    console.error("[PDF export]", e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 

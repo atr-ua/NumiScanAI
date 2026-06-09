@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Coin } from "../types";
-import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload, ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
 import CountryFlag from "./CountryFlag";
 import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } from "../utils/categoryUtils";
 import { fixTitleWithYear } from "../utils/coinUtils";
@@ -20,6 +20,8 @@ interface CoinDatabaseProps {
   onReorderCoins: (ids: string[]) => Promise<void>;
   countryFilter?: string;
   onClearCountryFilter?: () => void;
+  onFilteredCoinsChange?: (coins: Coin[]) => void;
+  onFilterDescriptionChange?: (desc: string) => void;
 }
 
 const formatDateTime = (dateStr?: string) => {
@@ -78,7 +80,7 @@ const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
   return sorted.map((c) => c.id);
 };
 
-export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter }: CoinDatabaseProps) {
+export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter, onFilteredCoinsChange, onFilterDescriptionChange }: CoinDatabaseProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMetalFilter, setSelectedMetalFilter] = useState("Всі");
   const [currentPage, setCurrentPage] = useState(1);
@@ -148,6 +150,16 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
   filteredCoinsRef.current = filteredCoins;
 
   useEffect(() => {
+    onFilteredCoinsChange?.(filteredCoins);
+    const parts: string[] = [];
+    if (searchQuery.trim())                parts.push(`Пошук: «${searchQuery.trim()}»`);
+    if (selectedMetalFilter !== "Всі")     parts.push(`Метал: ${selectedMetalFilter}`);
+    if (countryFilter)                     parts.push(`Країна: ${countryFilter}`);
+    onFilterDescriptionChange?.(parts.join(" · "));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredCoins.map(c => c.id).join(","), filteredCoins.length]);
+
+  useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey) return;
       const tag = (e.target as HTMLElement).tagName;
@@ -202,8 +214,35 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
         });
       }
     };
+    const handleWheel = (e: WheelEvent) => {
+      if (!zoomedImage?.coinId) return;
+      e.preventDefault();
+      const list = filteredCoinsRef.current;
+      const idx = list.findIndex((c) => c.id === zoomedImage.coinId);
+      const nextIdx = e.deltaY > 0 ? idx + 1 : idx - 1;
+      if (nextIdx < 0 || nextIdx >= list.length) return;
+      const next = list[nextIdx];
+      const preferSide = zoomedImage.side ?? "obverse";
+      const hasPref = preferSide === "obverse" ? Boolean(next.hasObverse) : Boolean(next.hasReverse);
+      const hasAlt  = preferSide === "obverse" ? Boolean(next.hasReverse) : Boolean(next.hasObverse);
+      if (!hasPref && !hasAlt) return;
+      const side: "obverse" | "reverse" = hasPref ? preferSide : (preferSide === "obverse" ? "reverse" : "obverse");
+      setZoomedImage({
+        src: `/api/coins/${next.id}/image/${side}?t=${next.updatedAt || ''}`,
+        title: next.title,
+        subtitle: side === "obverse" ? "Аверс (AV)" : "Реверс (RV)",
+        coinId: next.id,
+        side,
+        hasObverse: Boolean(next.hasObverse),
+        hasReverse: Boolean(next.hasReverse),
+      });
+    };
     window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("wheel", handleWheel);
+    };
   }, [zoomedImage]);
 
   const handleOpenDetail = async (coin: Coin) => {
@@ -260,6 +299,21 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     } finally {
       setIsEditing(false);
     }
+  };
+
+  const handleSwapImages = async () => {
+    if (!selectedCoin?.imageObverse || !selectedCoin?.imageReverse) return;
+    const updated: Coin = {
+      ...selectedCoin,
+      imageObverse: selectedCoin.imageReverse,
+      imageReverse: selectedCoin.imageObverse,
+      updatedAt: new Date().toISOString(),
+    } as Coin;
+    setSelectedCoin(updated);
+    setEditForm(updated);
+    try {
+      await onUpdateCoin(updated);
+    } catch {}
   };
 
   const handleImageSideChange = (e: React.ChangeEvent<HTMLInputElement>, side: "obverse" | "reverse") => {
@@ -736,12 +790,23 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                   )}
 
                   {!isEditing && (
-                    <div className="flex gap-2 justify-center mt-1">
-                      <span className="text-[9px] font-mono text-white/35">
+                    <div className="flex gap-3 justify-center items-center mt-1 flex-wrap">
+                      {selectedCoin.imageObverse && selectedCoin.imageReverse && (
+                        <button
+                          type="button"
+                          onClick={handleSwapImages}
+                          className="flex items-center gap-1 text-[9px] font-mono text-white/40 hover:text-[#D4AF37] transition-colors cursor-pointer"
+                          title="Поміняти аверс і реверс місцями"
+                        >
+                          <ArrowLeftRight className="h-3 w-3" />
+                          Поміняти сторони
+                        </button>
+                      )}
+                      <span className="text-[9px] font-mono text-white/25">
                         {!selectedCoin.imageObverse && !selectedCoin.imageReverse ? (
                           "💡 Натисніть «Редагувати поля» щоб додати аверс і реверс"
                         ) : (
-                          "✓ Фото аверсу та реверсу монети завантажені у базу"
+                          "✓ Фото аверсу та реверсу монети завантажені"
                         )}
                       </span>
                     </div>
@@ -1141,6 +1206,14 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
               <p className="text-base sm:text-lg font-sans font-semibold text-white/95 line-clamp-1 leading-snug">
                 {zoomedImage.title}
               </p>
+              {(() => {
+                const country = zoomedImage.coinId
+                  ? filteredCoinsRef.current.find(c => c.id === zoomedImage.coinId)?.country
+                  : null;
+                return country
+                  ? <p className="text-[11px] font-sans text-white/45 mt-1 tracking-wide">{country}</p>
+                  : null;
+              })()}
             </div>
 
             {/* Main Image Frame with high shadow detail */}
@@ -1156,7 +1229,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
             {/* Hint */}
             <p className="mt-4 sm:mt-5 text-[11px] font-mono tracking-wide text-white/40 select-none flex items-center gap-1.5 bg-white/5 border border-white/5 py-1.5 px-3 rounded-full" onClick={(e) => { e.stopPropagation(); setZoomedImage(null); }}>
               {zoomedImage.coinId && (zoomedImage.hasObverse || zoomedImage.hasReverse)
-                ? "← → аверс/реверс · ↑ ↓ монета · Esc закрити"
+                ? "← → аверс/реверс · ↑↓ або ↕ колесо — монета · Esc закрити"
                 : "Esc або клік поза межами — закрити"}
             </p>
           </div>

@@ -220,3 +220,12 @@ export const dbSaveCoin = async (c: any): Promise<any> => {
 /** Delete a coin by id. */
 export const dbDeleteCoin = (id: string): Promise<void> =>
   run("DELETE FROM coins WHERE id = ?", [id]);
+
+/** Fetches full coin data (including images) for the given IDs, preserving input order. */
+export const dbGetCoinsByIds = async (ids: string[]): Promise<any[]> => {
+  if (ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await all<any>(`SELECT * FROM coins WHERE id IN (${placeholders})`, ids);
+  const byId = new Map(rows.map((r: any) => [r.id, r]));
+  return ids.map(id => byId.get(id)).filter(Boolean);
+};

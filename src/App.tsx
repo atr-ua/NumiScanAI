@@ -15,6 +15,8 @@ import CountryFlag from "./components/CountryFlag";
 
 export default function App() {
   const [coins, setCoins] = useState<Coin[]>([]);
+  const [filteredCatalogCoins, setFilteredCatalogCoins] = useState<Coin[]>([]);
+  const [filterDescription, setFilterDescription] = useState("");
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [recognitionError, setRecognitionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"database" | "recognition" | "statistics" | "service">("database");
@@ -23,6 +25,11 @@ export default function App() {
   const [recentRecognized, setRecentRecognized] = useState<Partial<Coin> | null>(null);
   const [notesInput, setNotesInput] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("selectedModel") || "gemini-3.5-flash");
+  const DEFAULT_PINNED = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash"];
+  const [pinnedModels, setPinnedModels] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pinnedModels") || "null") || DEFAULT_PINNED; }
+    catch { return DEFAULT_PINNED; }
+  });
   const [duplicates, setDuplicates] = useState<Coin[]>([]);
   const [countryFilter, setCountryFilter] = useState<string | undefined>(undefined);
   // Fetch all coins on mount
@@ -324,6 +331,8 @@ export default function App() {
                 onReorderCoins={handleReorderCoins}
                 countryFilter={countryFilter}
                 onClearCountryFilter={() => setCountryFilter(undefined)}
+                onFilteredCoinsChange={setFilteredCatalogCoins}
+                onFilterDescriptionChange={setFilterDescription}
               />
             </div>
           )}
@@ -333,26 +342,18 @@ export default function App() {
             {/* Model selector */}
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-[10px] text-white/35 font-mono uppercase tracking-widest shrink-0">Модель ШІ:</span>
-              {([
-                { id: "gemini-3.1-flash-lite", label: "3.1 Lite",    note: "надшвидка" },
-                { id: "gemini-2.5-flash",      label: "2.5 Flash",   note: "500/день · точніша" },
-                { id: "gemini-2.5-pro",        label: "2.5 Pro",     note: "25/день · максимальна" },
-                { id: "gemini-3.5-flash",      label: "3.5 Flash",   note: "новітня" },
-              ] as const).map((m) => (
+              {pinnedModels.map((id) => (
                 <button
-                  key={m.id}
+                  key={id}
                   type="button"
-                  onClick={() => { setSelectedModel(m.id); localStorage.setItem("selectedModel", m.id); }}
+                  onClick={() => { setSelectedModel(id); localStorage.setItem("selectedModel", id); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold border transition-all cursor-pointer ${
-                    selectedModel === m.id
+                    selectedModel === id
                       ? "bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]"
                       : "bg-transparent border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
                   }`}
                 >
-                  {m.label}
-                  <span className={`font-normal ${selectedModel === m.id ? "text-[#D4AF37]/60" : "text-white/25"}`}>
-                    · {m.note}
-                  </span>
+                  {id.replace("gemini-", "").replace("-preview", "★")}
                 </button>
               ))}
             </div>
@@ -506,7 +507,14 @@ export default function App() {
 
           {activeTab === "service" && (
             <div className="animate-fade-in w-full">
-              <ServicePage />
+              <ServicePage
+                catalogCoins={filteredCatalogCoins}
+                filterDescription={filterDescription}
+                selectedModel={selectedModel}
+                onModelChange={(id) => { setSelectedModel(id); localStorage.setItem("selectedModel", id); }}
+                pinnedModels={pinnedModels}
+                onPinnedModelsChange={(ids) => { setPinnedModels(ids); localStorage.setItem("pinnedModels", JSON.stringify(ids)); }}
+              />
             </div>
           )}
         </div>

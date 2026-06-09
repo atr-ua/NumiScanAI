@@ -5,10 +5,34 @@
  */
 
 import React, { useState, useRef } from "react";
-import { Server, Code, Copy, Check, ShieldCheck, Database, FileJson, FileSpreadsheet, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Server, Code, Copy, Check, ShieldCheck, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle, FileText, Download, Zap } from "lucide-react";
+import type { Coin } from "../types";
 
 interface ServicePageProps {
   apiPort?: number;
+  catalogCoins?: Coin[];
+  filterDescription?: string;
+  selectedModel?: string;
+  onModelChange?: (id: string) => void;
+  pinnedModels?: string[];
+  onPinnedModelsChange?: (ids: string[]) => void;
+}
+
+// Known free-tier RPD limits (requests/day). Not available from the API.
+const KNOWN_RPD: Record<string, string> = {
+  "gemini-2.5-pro":           "25/день",
+  "gemini-2.5-flash":         "500/день",
+  "gemini-2.5-flash-lite":    "1500/день",
+  "gemini-2.0-flash":         "1500/день",
+  "gemini-2.0-flash-001":     "1500/день",
+  "gemini-2.0-flash-lite":    "1500/день",
+  "gemini-2.0-flash-lite-001":"1500/день",
+};
+
+interface GeminiModel {
+  id: string;
+  displayName: string;
+  description: string;
 }
 
 const BATCH_MODELS = [
@@ -18,15 +42,41 @@ const BATCH_MODELS = [
   { id: "gemini-3.1-flash-lite", label: "3.1 Lite",    note: "надшвидка" },
 ];
 
-export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
+export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterDescription = "", selectedModel, onModelChange, pinnedModels = [], onPinnedModelsChange }: ServicePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [batchModel, setBatchModel] = useState(() => localStorage.getItem("batchMintageModel") || "gemini-2.5-flash");
+
+  // Dynamic Gemini model list
+  const [geminiModels, setGeminiModels] = useState<GeminiModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsFetched, setModelsFetched] = useState(false);
+
+  const fetchGeminiModels = async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await fetch("/api/gemini-models");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setGeminiModels(data);
+      setModelsFetched(true);
+    } catch (e: any) {
+      setModelsError(e.message);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
   const [version, setVersion] = useState<{ hash: string; date: string | null; subject: string | null } | null>(null);
   React.useEffect(() => {
     fetch("/api/version").then(r => r.json()).then(setVersion).catch(() => {});
   }, []);
   const [mintageStatus, setMintageStatus] = useState<{ text: string; ok: boolean } | null>(null);
   const [mintageRunning, setMintageRunning] = useState(false);
+
+  // PDF Catalog state
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfWithImages, setPdfWithImages] = useState(true);
 
   // Numista sync state
   type NuLog = { type: string; title?: string; fields?: string[]; message?: string };
@@ -90,6 +140,34 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
       setMintageStatus({ text: `✗ ${e.message}`, ok: false });
     } finally {
       setMintageRunning(false);
+    }
+  };
+
+  const generatePdfCatalog = async () => {
+    setPdfGenerating(true);
+    try {
+      const res = await fetch("/api/export/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: catalogCoins.map(c => c.id), withImages: pdfWithImages, filterSummary: filterDescription }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `catalog-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`Помилка генерації PDF: ${e.message}`);
+    } finally {
+      setPdfGenerating(false);
     }
   };
 
@@ -407,6 +485,179 @@ export default function ServicePage({ apiPort = 3001 }: ServicePageProps) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* AI Model Selection */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-[#D4AF37]" />
+          <h3 className="text-white font-semibold text-sm font-sans">Модель розпізнавання AI</h3>
+          <span className="text-[10px] font-mono text-white/30 ml-auto">Google Gemini</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Вибір моделі Gemini для розпізнавання монет на вкладці «Розпізнавання». Завантажте актуальний список
+          доступних моделей безпосередньо з API Google. Поточна модель зберігається між сесіями.
+        </p>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            type="button"
+            onClick={fetchGeminiModels}
+            disabled={modelsLoading}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${modelsLoading ? "animate-spin" : ""}`} />
+            {modelsLoading ? "Завантаження…" : modelsFetched ? "Оновити список" : "Завантажити моделі"}
+          </button>
+          {selectedModel && (
+            <span className="text-[11px] font-mono text-white/40">
+              Активна: <span className="text-[#D4AF37]/80">{selectedModel}</span>
+            </span>
+          )}
+        </div>
+
+        {modelsError && (
+          <div className="text-[11px] font-mono px-3 py-2 rounded-xl border border-red-500/20 text-red-400/80 bg-red-500/5">
+            {modelsError}
+          </div>
+        )}
+
+        {geminiModels.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-white/35">
+              <span>Закріплено для розпізнавання:</span>
+              <span className={`font-bold ${pinnedModels.length >= 4 ? "text-amber-400" : "text-[#D4AF37]/70"}`}>
+                {pinnedModels.length}/4
+              </span>
+              <span className="text-white/20">— відображаються як кнопки на вкладці ШІ</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {geminiModels.map((m) => {
+                const active  = selectedModel === m.id;
+                const pinned  = pinnedModels.includes(m.id);
+                const rpd     = KNOWN_RPD[m.id];
+                const canPin  = !pinned && pinnedModels.length < 4;
+
+                const togglePin = () => {
+                  const next = pinned
+                    ? pinnedModels.filter(id => id !== m.id)
+                    : [...pinnedModels, m.id];
+                  onPinnedModelsChange?.(next);
+                };
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border transition-all ${
+                      pinned
+                        ? "bg-[#D4AF37]/8 border-[#D4AF37]/30"
+                        : "bg-black/30 border-white/6 hover:border-white/15"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 px-3.5 pt-2.5 pb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[11px] font-mono font-bold truncate ${pinned ? "text-[#D4AF37]" : "text-white/70"}`}>
+                            {m.id}
+                          </span>
+                          {rpd && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/35 shrink-0">
+                              {rpd}
+                            </span>
+                          )}
+                          {active && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#D4AF37]/15 border border-[#D4AF37]/30 text-[#D4AF37]/80 shrink-0">
+                              активна
+                            </span>
+                          )}
+                        </div>
+                        {m.description && (
+                          <div className="text-[10px] font-sans mt-1 text-white/30 line-clamp-2 leading-relaxed">
+                            {m.description}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-1 shrink-0">
+                        {/* Pin toggle */}
+                        <button
+                          type="button"
+                          title={pinned ? "Зняти закріплення" : canPin ? "Закріпити для розпізнавання" : "Вже закріплено 4 моделі"}
+                          disabled={!pinned && !canPin}
+                          onClick={togglePin}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+                            pinned
+                              ? "bg-[#D4AF37]/15 border-[#D4AF37]/40 text-[#D4AF37]"
+                              : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                          }`}
+                        >
+                          <svg className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                          </svg>
+                        </button>
+                        {/* Set active */}
+                        <button
+                          type="button"
+                          title="Встановити активною"
+                          onClick={() => { localStorage.setItem("selectedModel", m.id); onModelChange?.(m.id); }}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                            active
+                              ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                              : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                          }`}
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* PDF Catalog */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-[#D4AF37]" />
+          <h3 className="text-white font-semibold text-sm font-sans">Каталог PDF</h3>
+          <span className="text-[10px] font-mono text-white/25 ml-auto">{catalogCoins.length} монет</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Завантажує PDF-файл формату A4 із поточного відфільтрованого набору монет (Бази монет).
+          Фільтри та сортування задаються на вкладці «База монет» — тут відображається вже готова вибірка.
+          На кожній картці — аверс і реверс, якщо вони є.
+        </p>
+
+        <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+          <input
+            type="checkbox"
+            checked={pdfWithImages}
+            onChange={e => setPdfWithImages(e.target.checked)}
+            className="w-3.5 h-3.5 accent-[#D4AF37] cursor-pointer"
+          />
+          <span className="text-xs text-white/50">Включити фотографії монет (аверс + реверс)</span>
+        </label>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs font-mono text-white/35">
+            {catalogCoins.length === 0
+              ? "Немає монет у поточному фільтрі"
+              : `${catalogCoins.length} монет буде включено до PDF`}
+          </span>
+          <button
+            type="button"
+            onClick={generatePdfCatalog}
+            disabled={pdfGenerating || catalogCoins.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {pdfGenerating ? "Генерація…" : "Завантажити PDF"}
+          </button>
+        </div>
       </div>
     </div>
   );
