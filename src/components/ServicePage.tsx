@@ -18,6 +18,16 @@ interface ServicePageProps {
   onPinnedModelsChange?: (ids: string[]) => void;
 }
 
+// Hardcoded OpenAI vision-capable models
+const OPENAI_MODELS = [
+  { id: "gpt-4o",        displayName: "GPT-4o",        description: "Флагман OpenAI — найвища точність vision-аналізу" },
+  { id: "gpt-4o-mini",   displayName: "GPT-4o mini",   description: "Швидка й економічна, повна підтримка зображень" },
+  { id: "gpt-4.1",       displayName: "GPT-4.1",       description: "Покращена точність і слідування інструкціям" },
+  { id: "gpt-4.1-mini",  displayName: "GPT-4.1 mini",  description: "Компактна GPT-4.1 з vision, оптимальна ціна/якість" },
+  { id: "gpt-4.1-nano",  displayName: "GPT-4.1 nano",  description: "Найшвидша та найдешевша з підтримкою зображень" },
+  { id: "o4-mini",       displayName: "o4-mini",        description: "Міркувальна модель з vision — краще для складних монет" },
+];
+
 // Known free-tier RPD limits (requests/day). Not available from the API.
 const KNOWN_RPD: Record<string, string> = {
   "gemini-2.5-pro":           "25/день",
@@ -526,8 +536,8 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
           <>
             <div className="flex items-center gap-2 text-[11px] font-mono text-white/35">
               <span>Закріплено для розпізнавання:</span>
-              <span className={`font-bold ${pinnedModels.length >= 4 ? "text-amber-400" : "text-[#D4AF37]/70"}`}>
-                {pinnedModels.length}/4
+              <span className={`font-bold ${pinnedModels.length >= 6 ? "text-amber-400" : "text-[#D4AF37]/70"}`}>
+                {pinnedModels.length}/6
               </span>
               <span className="text-white/20">— відображаються як кнопки на вкладці ШІ</span>
             </div>
@@ -537,7 +547,7 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
                 const active  = selectedModel === m.id;
                 const pinned  = pinnedModels.includes(m.id);
                 const rpd     = KNOWN_RPD[m.id];
-                const canPin  = !pinned && pinnedModels.length < 4;
+                const canPin  = !pinned && pinnedModels.length < 6;
 
                 const togglePin = () => {
                   const next = pinned
@@ -617,6 +627,96 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
             </div>
           </>
         )}
+      </div>
+
+      {/* OpenAI Models */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-emerald-400" />
+          <h3 className="text-white font-semibold text-sm font-sans">OpenAI моделі</h3>
+          <span className="text-[10px] font-mono text-white/30 ml-auto">gpt-4o · gpt-4.1 · o4-mini</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Моделі OpenAI з підтримкою зображень. Для роботи потрібен <code className="text-white/70 font-mono">OPENAI_API_KEY</code> у файлі <code className="text-white/70 font-mono">.env</code>.
+          Можна закріпити поряд із Gemini-моделями — загальний ліміт 4 кнопки.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {OPENAI_MODELS.map((m) => {
+            const active  = selectedModel === m.id;
+            const pinned  = pinnedModels.includes(m.id);
+            const canPin  = !pinned && pinnedModels.length < 6;
+
+            const togglePin = () => {
+              const next = pinned
+                ? pinnedModels.filter(id => id !== m.id)
+                : [...pinnedModels, m.id];
+              onPinnedModelsChange?.(next);
+            };
+
+            return (
+              <div
+                key={m.id}
+                className={`rounded-xl border transition-all ${
+                  pinned
+                    ? "bg-emerald-500/8 border-emerald-500/30"
+                    : "bg-black/30 border-white/6 hover:border-white/15"
+                }`}
+              >
+                <div className="flex items-start gap-2 px-3.5 pt-2.5 pb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[11px] font-mono font-bold truncate ${pinned ? "text-emerald-400" : "text-white/70"}`}>
+                        {m.id}
+                      </span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400/70 shrink-0">
+                        OpenAI
+                      </span>
+                      {active && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0">
+                          активна
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] font-sans mt-1 text-white/30 line-clamp-2 leading-relaxed">
+                      {m.description}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      type="button"
+                      title={pinned ? "Зняти закріплення" : canPin ? "Закріпити для розпізнавання" : "Вже закріплено 4 моделі"}
+                      disabled={!pinned && !canPin}
+                      onClick={togglePin}
+                      className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+                        pinned
+                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                          : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                      }`}
+                    >
+                      <svg className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      title="Встановити активною"
+                      onClick={() => { localStorage.setItem("selectedModel", m.id); onModelChange?.(m.id); }}
+                      className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                        active
+                          ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                          : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                      }`}
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* PDF Catalog */}

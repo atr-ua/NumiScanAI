@@ -25,7 +25,7 @@ export default function App() {
   const [recentRecognized, setRecentRecognized] = useState<Partial<Coin> | null>(null);
   const [notesInput, setNotesInput] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem("selectedModel") || "gemini-3.5-flash");
-  const DEFAULT_PINNED = ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.5-flash"];
+  const DEFAULT_PINNED = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"];
   const [pinnedModels, setPinnedModels] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("pinnedModels") || "null") || DEFAULT_PINNED; }
     catch { return DEFAULT_PINNED; }
@@ -349,11 +349,15 @@ export default function App() {
                   onClick={() => { setSelectedModel(id); localStorage.setItem("selectedModel", id); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold border transition-all cursor-pointer ${
                     selectedModel === id
-                      ? "bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]"
+                      ? id.startsWith("gpt-") || /^o\d/.test(id)
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
+                        : "bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]"
                       : "bg-transparent border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
                   }`}
                 >
-                  {id.replace("gemini-", "").replace("-preview", "★")}
+                  {id.startsWith("gemini-")
+                    ? id.replace("gemini-", "").replace("-preview", "★")
+                    : id}
                 </button>
               ))}
             </div>
@@ -380,7 +384,7 @@ export default function App() {
                       </h3>
                       <p className="text-xs text-white/40 flex items-center gap-1.5">
                         {recentRecognized.country && (
-                          <CountryFlag country={recentRecognized.country} fallbackSizeClass="text-sm" />
+                          <CountryFlag country={recentRecognized.country} year={recentRecognized.year ? Number(recentRecognized.year) : null} fallbackSizeClass="text-sm" />
                         )}
                         {recentRecognized.country}, {recentRecognized.year || "Серія випуску"}
                       </p>
@@ -396,7 +400,7 @@ export default function App() {
                           <span className="text-white/40">Країна:</span>
                           <strong className="text-white flex items-center gap-1.5">
                             {recentRecognized.country && (
-                              <CountryFlag country={recentRecognized.country} fallbackSizeClass="text-sm" />
+                              <CountryFlag country={recentRecognized.country} year={recentRecognized.year ? Number(recentRecognized.year) : null} fallbackSizeClass="text-sm" />
                             )}
                             {recentRecognized.country}
                           </strong>

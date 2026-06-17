@@ -8,6 +8,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds } from "./src/db.js";
 import { generateCatalogPdf } from "./src/pdfExport.js";
@@ -21,9 +22,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 app.use(express.json({ limit: "20mb" }));
 
 // Safe environment key handling
-const getApiKey = () => {
-  return process.env.GEMINI_API_KEY || "";
-};
+const getApiKey    = () => process.env.GEMINI_API_KEY || "";
+const getOpenAiKey = () => process.env.OPENAI_API_KEY || "";
 
 // API: Version info from git
 app.get("/api/version", async (_req, res) => {
@@ -235,14 +235,115 @@ app.get("/api/gemini-models", async (_req, res) => {
   }
 });
 
-// API: Recognize coin via Gemini
+// Shared prompt builders for coin recognition (used by both Gemini and OpenAI)
+const COIN_JSON_FIELDS = `{
+  "title": "Назва монети, напр. '2 гривні (2018)'",
+  "denomination": "Номінал, напр. '2 гривні'",
+  "country": "Країна, напр. 'Україна'",
+  "year": "Рік карбування або 'Невідомо'",
+  "metal": "Метал/сплав, напр. 'Нейзильбер'",
+  "weight": "Вага, напр. '4.0 г'",
+  "diameter": "Діаметр, напр. '22.0 мм'",
+  "estimatedValue": "Ринкова вартість у UAH, напр. '10–50 грн'",
+  "mintage": "Тираж, напр. '1 000 000 шт' або 'Невідомо'",
+  "thickness": "Товщина, напр. '1.8 мм' або 'Невідомо'",
+  "edge": "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'/'комбінований'",
+  "rarity": "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна'",
+  "grade": "'VF'/'XF'/'UNC'",
+  "historicalContext": "Опис монети, символіки, тиражу — українською",
+  "imagesSwapped": "true якщо перше фото — реверс, false — інакше"
+}`;
+
+const buildCoinSystemPrompt = (isRefinement: boolean) =>
+  isRefinement
+    ? `You are an expert world coin analyst and professional numismatist. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields. Respond with structured JSON only matching this schema:\n${COIN_JSON_FIELDS}\nAll text in Ukrainian.`
+    : `You are an expert world coin analyst and professional numismatist. Identify the coin from the provided image(s). Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`;
+
+const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, correction?: string, previousResult?: object) =>
+  isRefinement
+    ? `You previously identified this coin:\n${JSON.stringify(previousResult, null, 2)}\n\nUser correction: "${correction}"\n\nUpdate ALL affected fields accordingly. Response MUST be in Ukrainian.`
+    : hasBothSides
+      ? `Two images of the same coin provided: first is labeled obverse, second is reverse. Identify using both. Set imagesSwapped=true if the order appears reversed. Response MUST be in Ukrainian.`
+      : `Identify this coin. Look for year, denomination, portraits, emblems, lettering. Give the most likely candidate. Response MUST be in Ukrainian.`;
+
+// API: Recognize coin via Gemini or OpenAI (auto-detected by model prefix)
 app.post("/api/recognize-coin", async (req, res) => {
   const { image, imageReverse, correction, previousResult, model } = req.body;
   const modelName: string = model || "gemini-2.0-flash";
-  if (!image) {
-    return res.status(400).json({ error: "Зображення не передано" });
+  if (!image) return res.status(400).json({ error: "Зображення не передано" });
+
+  const isRefinement = !!(correction && previousResult);
+  const base64Match  = image.match(/^data:image\/\w+;base64,(.+)$/);
+  const cleanBase64  = base64Match ? base64Match[1] : image;
+
+  const isOpenAI = modelName.startsWith("gpt-") || /^o\d/.test(modelName);
+
+  // ── OpenAI path ───────────────────────────────────────────────────────────
+  if (isOpenAI) {
+    const openaiKey = getOpenAiKey();
+    if (!openaiKey) return res.status(500).json({ error: "OPENAI_API_KEY відсутній у .env" });
+
+    try {
+      const openai = new OpenAI({ apiKey: openaiKey });
+
+      const userContent: OpenAI.ChatCompletionContentPart[] = [
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanBase64}`, detail: "high" } },
+      ];
+
+      if (imageReverse) {
+        const revMatch = (imageReverse as string).match(/^data:image\/\w+;base64,(.+)$/);
+        const cleanRev = revMatch ? revMatch[1] : imageReverse;
+        userContent.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanRev}`, detail: "high" } });
+      }
+
+      const hasBothSides = userContent.length > 1;
+      userContent.push({ type: "text", text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult) });
+
+      const coinSchema = {
+        type: "object",
+        properties: {
+          title:           { type: "string", description: "Назва монети, напр. '2 гривні (2018)'" },
+          denomination:    { type: "string", description: "Номінал, напр. '2 гривні'" },
+          country:         { type: "string", description: "Країна походження українською, напр. 'Україна'" },
+          year:            { type: "string", description: "Рік карбування або 'Невідомо'" },
+          metal:           { type: "string", description: "Метал/сплав українською, напр. 'Нейзильбер'" },
+          weight:          { type: "string", description: "Вага, напр. '4.0 г'" },
+          diameter:        { type: "string", description: "Діаметр, напр. '22.0 мм'" },
+          estimatedValue:  { type: "string", description: "Ринкова вартість у UAH, напр. '10–50 грн'" },
+          mintage:         { type: "string", description: "Тираж, напр. '1 000 000 шт' або 'Невідомо'" },
+          thickness:       { type: "string", description: "Товщина, напр. '1.8 мм' або 'Невідомо'" },
+          edge:            { type: "string", description: "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'" },
+          rarity:          { type: "string", description: "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна'" },
+          grade:           { type: "string", description: "'VF'/'XF'/'UNC'" },
+          historicalContext: { type: "string", description: "Опис монети, символіки — українською мовою" },
+          imagesSwapped:   { type: "boolean", description: "true якщо перше фото є реверсом" },
+        },
+        required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "mintage", "thickness", "edge", "rarity", "grade", "historicalContext", "imagesSwapped"],
+        additionalProperties: false,
+      };
+
+      const response = await openai.chat.completions.create({
+        model: modelName,
+        messages: [
+          { role: "system", content: buildCoinSystemPrompt(isRefinement) },
+          { role: "user",   content: userContent },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name: "coin_identification", strict: true, schema: coinSchema },
+        },
+        max_tokens: 1500,
+      });
+
+      const parsedJson = JSON.parse(response.choices[0].message.content || "{}");
+      return res.json(parsedJson);
+    } catch (error: any) {
+      console.error("Помилка OpenAI API:", error);
+      return res.status(500).json({ error: error.message || "Помилка OpenAI API" });
+    }
   }
 
+  // ── Gemini path ───────────────────────────────────────────────────────────
   const apiKey = getApiKey();
   if (!apiKey) {
     return res.status(500).json({
@@ -251,18 +352,7 @@ app.post("/api/recognize-coin", async (req, res) => {
   }
 
   try {
-    // Extract actual base64 data (strip data:image/jpeg;base64, etc.)
-    const base64Match = image.match(/^data:image\/\w+;base64,(.+)$/);
-    const cleanBase64 = base64Match ? base64Match[1] : image;
-
-    const ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
+    const ai = new GoogleGenAI({ apiKey, httpOptions: { headers: { "User-Agent": "aistudio-build" } } });
 
     const imageParts: { inlineData: { mimeType: string; data: string } }[] = [
       { inlineData: { mimeType: "image/jpeg", data: cleanBase64 } },
@@ -274,108 +364,44 @@ app.post("/api/recognize-coin", async (req, res) => {
       imageParts.push({ inlineData: { mimeType: "image/jpeg", data: cleanRev } });
     }
 
-    const isRefinement = !!(correction && previousResult);
     const hasBothSides = imageParts.length === 2;
-
-    const textPart = isRefinement
-      ? {
-          text: `You previously identified this coin with the following data:
-${JSON.stringify(previousResult, null, 2)}
-
-The user has provided a correction: "${correction}"
-
-Re-examine the coin image(s) with this correction in mind. Update ALL fields that are affected by the correction (e.g. if denomination changed, update weight, diameter, estimatedValue, rarity, historicalContext accordingly). Keep fields that are still correct. Your response MUST be in Ukrainian.`
-        }
-      : {
-          text: hasBothSides
-            ? `You are given TWO images of the same coin: the first is labeled obverse, the second is labeled reverse. Identify the coin using both images. Also determine whether the images are actually in the correct order — if the first image looks like a reverse (tails/coat of arms side without a portrait or denomination on the front) and the second looks like the obverse (heads), set imagesSwapped to true. Your response MUST be in Ukrainian.`
-            : `Identify this coin from its image. Look for year, denomination, portraits, emblem, country, or specific lettering. If it's blurry or ambiguous, give the most likely candidate based on numismatic visual elements. Your response MUST be in Ukrainian.`
-        };
+    const textPart = { text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult) };
 
     const response = await ai.models.generateContent({
       model: modelName,
       contents: { parts: [...imageParts, textPart] },
       config: {
-        systemInstruction: isRefinement
-          ? "You are an expert world coin analyst and professional numismatist. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, history). Respond with structured JSON only. Use Ukrainian language."
-          : "You are an expert world coin analyst and professional numismatist. Given an image of a coin (or obverse/reverse), identify it. You respond with structured JSON only, strictly matching the output schema. Use Ukrainian language translations for metal composition, country of origin, rarity levels, and historical text.",
+        systemInstruction: buildCoinSystemPrompt(isRefinement),
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            title: {
-              type: Type.STRING,
-              description: "Назва монети, наприклад, '2 гривні (2018)' або '10 копійок (1992)'"
-            },
-            denomination: {
-              type: Type.STRING,
-              description: "Номінал монети, наприклад, '2 гривні'"
-            },
-            country: {
-              type: Type.STRING,
-              description: "Країна походження монети, наприклад, 'Україна', 'Німеччина'"
-            },
-            year: {
-              type: Type.STRING,
-              description: "Рік карбування, наприклад, '2018', '1992' або 'Невідомо'"
-            },
-            metal: {
-              type: Type.STRING,
-              description: "Метал чи метал сплаву монети, наприклад, 'Оцинкована сталь', 'Нейзильбер', 'Алюмінієва бронза', 'Срібло'"
-            },
-            weight: {
-              type: Type.STRING,
-              description: "Орієнтовна вага монети, наприклад, '4.0 г'"
-            },
-            diameter: {
-              type: Type.STRING,
-              description: "Орієнтовний діаметр монети, наприклад, '22.0 мм'"
-            },
-            estimatedValue: {
-              type: Type.STRING,
-              description: "Орієнтовна ринкова вага/вартість монети в UAH, наприклад, 'номінал', '10 - 50 грн' або '500 грн'"
-            },
-            mintage: {
-              type: Type.STRING,
-              description: "Тираж монети — кількість відкарбованих примірників, наприклад, '1 000 000 шт', '50 000 шт (proof)', 'Невідомо'."
-            },
-            thickness: {
-              type: Type.STRING,
-              description: "Товщина монети в мм, наприклад, '1.8 мм', '2.0 мм'. 'Невідомо' якщо немає даних."
-            },
-            edge: {
-              type: Type.STRING,
-              description: "Тип гурту монети українською: 'гладкий', 'рифлений', 'написовий', 'сегментований', 'комбінований' тощо. 'Невідомо' якщо немає даних."
-            },
-            rarity: {
-              type: Type.STRING,
-              description: "Рівень рідкості монети, наприклад: 'Звичайна', 'Нечаста', 'Рідкісна', 'Колекційна'"
-            },
-            grade: {
-              type: Type.STRING,
-              description: "Оцінка збереженості за замовчуванням, наприклад 'VF' або 'XF' або 'UNC'"
-            },
-            historicalContext: {
-              type: Type.STRING,
-              description: "Багатий опис історії монети, символізму гербів, або цікавих особливостей тиражу українською мовою."
-            },
-            imagesSwapped: {
-              type: Type.BOOLEAN,
-              description: "true if the two provided images appear to be in reversed order (first image is actually the reverse side, second is the obverse). false otherwise or if only one image was provided."
-            }
+            title:          { type: Type.STRING },
+            denomination:   { type: Type.STRING },
+            country:        { type: Type.STRING },
+            year:           { type: Type.STRING },
+            metal:          { type: Type.STRING },
+            weight:         { type: Type.STRING },
+            diameter:       { type: Type.STRING },
+            estimatedValue: { type: Type.STRING },
+            mintage:        { type: Type.STRING },
+            thickness:      { type: Type.STRING },
+            edge:           { type: Type.STRING },
+            rarity:         { type: Type.STRING },
+            grade:          { type: Type.STRING },
+            historicalContext: { type: Type.STRING },
+            imagesSwapped:  { type: Type.BOOLEAN },
           },
-          required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext"]
-        }
-      }
+          required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext"],
+        },
+      },
     });
 
     const parsedJson = JSON.parse(response.text || "{}");
     res.json(parsedJson);
   } catch (error: any) {
-    console.error("Помилка при виклику Gemini API:", error);
-    res.status(500).json({
-      error: error.message || "Сталася помилка при розпізнаванні монети AI. Перевірте з'єднання або ключ API."
-    });
+    console.error("Помилка Gemini API:", error);
+    res.status(500).json({ error: error.message || "Помилка Gemini API" });
   }
 });
 

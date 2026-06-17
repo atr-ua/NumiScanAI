@@ -132,12 +132,17 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
     });
 
     return Object.entries(registry)
-      .map(([name, count]) => ({
-        name,
-        count,
-        flag: getCountryFlag(name),
-        percentage: coins.length > 0 ? (count / coins.length) * 100 : 0,
-      }))
+      .map(([name, count]) => {
+        const firstCoin = coins.find((c) => (c.country || "Невідомо") === name);
+        const representativeYear = firstCoin?.year ? Number(firstCoin.year) : null;
+        return {
+          name,
+          count,
+          year: representativeYear,
+          flag: getCountryFlag(name),
+          percentage: coins.length > 0 ? (count / coins.length) * 100 : 0,
+        };
+      })
       .sort((a, b) => b.count - a.count);
   };
 
@@ -549,7 +554,7 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-[10px] font-mono text-white/20 w-4 shrink-0 text-right">{i + 1}</span>
-                          <CountryFlag country={c.name} className="w-6 h-4.5 object-cover rounded shadow-[0_1px_3px_rgba(0,0,0,0.5)] block shrink-0 border border-white/5" fallbackSizeClass="text-base" />
+                          <CountryFlag country={c.name} year={c.year} className="w-6 h-4.5 object-cover rounded shadow-[0_1px_3px_rgba(0,0,0,0.5)] block shrink-0 border border-white/5" fallbackSizeClass="text-base" />
                           <span className="text-xs text-white/80 font-semibold truncate font-sans">{c.name}</span>
                         </div>
                         <span className="text-[#D4AF37] font-mono text-xs font-bold shrink-0">{c.count} шт</span>
@@ -573,7 +578,7 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
                           onDoubleClick={() => onFilterByCountry?.(c.name)}
                           title={onFilterByCountry ? `Двічі клікніть щоб фільтрувати: ${c.name}` : undefined}
                         >
-                          <CountryFlag country={c.name} className="w-4 h-3 object-cover rounded shrink-0 border border-white/5" fallbackSizeClass="text-xs" />
+                          <CountryFlag country={c.name} year={c.year} className="w-4 h-3 object-cover rounded shrink-0 border border-white/5" fallbackSizeClass="text-xs" />
                           <span className="text-[10px] text-white/40 truncate">{c.name}</span>
                           <span className="text-[10px] font-mono text-white/25 ml-auto shrink-0">{c.count}</span>
                         </div>

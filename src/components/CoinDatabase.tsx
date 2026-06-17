@@ -544,7 +544,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                           title={getCategoryName(coin.category)}
                         />
                       )}
-                      <CountryFlag country={coin.country} className="w-5 h-3.5 object-cover rounded shadow-[0_1px_2px_rgba(0,0,0,0.4)] block shrink-0 border border-white/5" />
+                      <CountryFlag country={coin.country} year={coin.year ? Number(coin.year) : null} className="w-5 h-3.5 object-cover rounded shadow-[0_1px_2px_rgba(0,0,0,0.4)] block shrink-0 border border-white/5" />
                       <span className="truncate">{coin.country}</span>
                     </span>
                     <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-full border shrink-0 ${
@@ -829,7 +829,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                         />
                       ) : (
                         <span className="flex items-center gap-1.5">
-                          <CountryFlag country={selectedCoin.country} fallbackSizeClass="text-sm" />
+                          <CountryFlag country={selectedCoin.country} year={selectedCoin.year ? Number(selectedCoin.year) : null} fallbackSizeClass="text-sm" />
                           {selectedCoin.country}
                         </span>
                       )}
