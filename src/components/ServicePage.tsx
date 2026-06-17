@@ -20,12 +20,16 @@ interface ServicePageProps {
 
 // Hardcoded OpenAI vision-capable models
 const OPENAI_MODELS = [
-  { id: "gpt-4o",        displayName: "GPT-4o",        description: "Флагман OpenAI — найвища точність vision-аналізу" },
-  { id: "gpt-4o-mini",   displayName: "GPT-4o mini",   description: "Швидка й економічна, повна підтримка зображень" },
+  { id: "gpt-5.5",       displayName: "GPT-5.5",       description: "Топ-модель нового покоління · $5/$30 за 1M токенів" },
+  { id: "gpt-5.5-pro",   displayName: "GPT-5.5 Pro",   description: "Розширена GPT-5.5 для складних завдань" },
+  { id: "gpt-5.4",       displayName: "GPT-5.4",       description: "Висока точність, доступніша ціна · $2.5/$15 за 1M" },
+  { id: "gpt-5.4-mini",  displayName: "GPT-5.4 mini",  description: "Оптимальна ціна/якість · $0.75/$4.5 за 1M токенів" },
+  { id: "gpt-5.4-nano",  displayName: "GPT-5.4 nano",  description: "Найшвидша та найдешевша GPT-5.4" },
+  { id: "gpt-4o",        displayName: "GPT-4o",        description: "Перевірена модель з найкращою підтримкою vision" },
+  { id: "gpt-4o-mini",   displayName: "GPT-4o mini",   description: "Економічна GPT-4o з підтримкою зображень" },
   { id: "gpt-4.1",       displayName: "GPT-4.1",       description: "Покращена точність і слідування інструкціям" },
-  { id: "gpt-4.1-mini",  displayName: "GPT-4.1 mini",  description: "Компактна GPT-4.1 з vision, оптимальна ціна/якість" },
-  { id: "gpt-4.1-nano",  displayName: "GPT-4.1 nano",  description: "Найшвидша та найдешевша з підтримкою зображень" },
-  { id: "o4-mini",       displayName: "o4-mini",        description: "Міркувальна модель з vision — краще для складних монет" },
+  { id: "gpt-4.1-mini",  displayName: "GPT-4.1 mini",  description: "Компактна GPT-4.1 з vision" },
+  { id: "o4-mini",       displayName: "o4-mini",        description: "Міркувальна модель — краще для складних монет" },
 ];
 
 // Known free-tier RPD limits (requests/day). Not available from the API.

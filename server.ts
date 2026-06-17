@@ -256,15 +256,17 @@ const COIN_JSON_FIELDS = `{
 
 const buildCoinSystemPrompt = (isRefinement: boolean) =>
   isRefinement
-    ? `You are an expert world coin analyst and professional numismatist. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields. Respond with structured JSON only matching this schema:\n${COIN_JSON_FIELDS}\nAll text in Ukrainian.`
-    : `You are an expert world coin analyst and professional numismatist. Identify the coin from the provided image(s). Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`;
+    ? `You are an expert world coin analyst and professional numismatist with deep knowledge of NGC, PCGS, Krause Standard Catalog, and national mint records. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, historical context). Respond with structured JSON only, matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`
+    : `You are an expert world coin analyst and professional numismatist with encyclopedic knowledge of world coinage across all eras and countries. You have access to NGC, PCGS, Krause Standard Catalog of World Coins, and national mint databases. Identify the coin from the provided image(s) with maximum precision. Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian. Metal composition, rarity, country, and historical context must be in Ukrainian.`;
+
+const COIN_VISUAL_HINTS = `Examine carefully: country name, denomination value, year of minting, ruler portrait or national emblem, mint mark, inscription language and script, edge design, and any special commemorative text. Cross-reference both sides to confirm identification. If ambiguous, choose the most likely candidate based on numismatic visual elements.`;
 
 const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, correction?: string, previousResult?: object) =>
   isRefinement
-    ? `You previously identified this coin:\n${JSON.stringify(previousResult, null, 2)}\n\nUser correction: "${correction}"\n\nUpdate ALL affected fields accordingly. Response MUST be in Ukrainian.`
+    ? `You previously identified this coin:\n${JSON.stringify(previousResult, null, 2)}\n\nUser correction: "${correction}"\n\nRe-examine the image(s) with this correction in mind. Update ALL fields affected by the correction (e.g. if denomination changes, also update weight, diameter, estimatedValue, rarity, historicalContext). Keep correct fields unchanged. All text MUST be in Ukrainian.`
     : hasBothSides
-      ? `Two images of the same coin provided: first is labeled obverse, second is reverse. Identify using both. Set imagesSwapped=true if the order appears reversed. Response MUST be in Ukrainian.`
-      : `Identify this coin. Look for year, denomination, portraits, emblems, lettering. Give the most likely candidate. Response MUST be in Ukrainian.`;
+      ? `Two images of the same coin are provided: the first is the obverse (heads), the second is the reverse (tails). Use BOTH images together to identify the coin as precisely as possible. ${COIN_VISUAL_HINTS} Also check whether the images are actually in the correct order — if the first image appears to be the reverse and the second the obverse, set imagesSwapped=true. All text fields MUST be in Ukrainian.`
+      : `Identify this coin from the image. ${COIN_VISUAL_HINTS} All text fields MUST be in Ukrainian.`;
 
 // API: Recognize coin via Gemini or OpenAI (auto-detected by model prefix)
 app.post("/api/recognize-coin", async (req, res) => {
