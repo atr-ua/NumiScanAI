@@ -249,6 +249,28 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
   };
   const gradeStats = getGradeStats();
 
+  // 9. Fun physical stats
+  const parseNum = (s?: string) => {
+    if (!s) return 0;
+    const m = s.replace(",", ".").match(/[\d.]+/);
+    return m ? parseFloat(m[0]) : 0;
+  };
+  const totalWeightG = coins.reduce((sum, c) => sum + parseNum(c.weight), 0);
+  const totalDiameterMm = coins.reduce((sum, c) => sum + parseNum(c.diameter), 0);
+  const totalThicknessMm = coins.reduce((sum, c) => sum + parseNum(c.thickness), 0);
+  const coinsWithWeight = coins.filter((c) => parseNum(c.weight) > 0).length;
+  const coinsWithDiameter = coins.filter((c) => parseNum(c.diameter) > 0).length;
+  const coinsWithThickness = coins.filter((c) => parseNum(c.thickness) > 0).length;
+
+  const formatWeight = (g: number) =>
+    g >= 1000 ? `${(g / 1000).toFixed(2)} кг` : `${g.toFixed(1)} г`;
+
+  const formatLength = (mm: number) => {
+    if (mm >= 1000) return `${(mm / 1000).toFixed(2)} м`;
+    if (mm >= 100) return `${(mm / 10).toFixed(1)} см`;
+    return `${mm.toFixed(0)} мм`;
+  };
+
   // Backup file actions
   const handleExportJSON = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(coins, null, 2));
@@ -395,6 +417,57 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
               </div>
               <p className="text-[10px] text-white/35 mt-2 leading-tight">
                 Охоплення вашої світової нумізматичної колекції.
+              </p>
+            </div>
+          </div>
+
+          {/* Fun physical stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-black/30 border border-[#D4AF37]/10 p-5 rounded-2xl flex flex-col justify-between min-h-[110px]">
+              <div>
+                <span className="text-white/40 text-[10px] uppercase font-mono tracking-wider block">
+                  ⚖️ Загальна вага колекції
+                </span>
+                <span className="text-2xl font-serif text-[#D4AF37] font-bold mt-2 inline-block">
+                  {coinsWithWeight > 0 ? formatWeight(totalWeightG) : "—"}
+                </span>
+              </div>
+              <p className="text-[10px] text-white/35 mt-2 leading-tight">
+                {coinsWithWeight > 0
+                  ? `За даними ${coinsWithWeight} з ${coins.length} монет · решта без ваги`
+                  : "Жодна монета не має даних про вагу"}
+              </p>
+            </div>
+
+            <div className="bg-black/30 border border-[#D4AF37]/10 p-5 rounded-2xl flex flex-col justify-between min-h-[110px]">
+              <div>
+                <span className="text-white/40 text-[10px] uppercase font-mono tracking-wider block">
+                  📐 Товщина стопки монет
+                </span>
+                <span className="text-2xl font-serif text-white font-bold mt-2 inline-block">
+                  {coinsWithThickness > 0 ? formatLength(totalThicknessMm) : "—"}
+                </span>
+              </div>
+              <p className="text-[10px] text-white/35 mt-2 leading-tight">
+                {coinsWithThickness > 0
+                  ? `Висота стопки з ${coinsWithThickness} монет`
+                  : "Жодна монета не має даних про товщину"}
+              </p>
+            </div>
+
+            <div className="bg-black/30 border border-[#D4AF37]/10 p-5 rounded-2xl flex flex-col justify-between min-h-[110px]">
+              <div>
+                <span className="text-white/40 text-[10px] uppercase font-mono tracking-wider block">
+                  📏 Довжина монет в ряд
+                </span>
+                <span className="text-2xl font-serif text-white font-bold mt-2 inline-block">
+                  {coinsWithDiameter > 0 ? formatLength(totalDiameterMm) : "—"}
+                </span>
+              </div>
+              <p className="text-[10px] text-white/35 mt-2 leading-tight">
+                {coinsWithDiameter > 0
+                  ? `Якби скласти ${coinsWithDiameter} монет в один ряд за діаметром`
+                  : "Жодна монета не має даних про діаметр"}
               </p>
             </div>
           </div>

@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ---
 
+## [Unreleased] — 2026-06-24
+
+### Added
+- **Loading indicator** — animated spinner with coin logo shown on first app load while coins are being fetched from the database; all tabs blocked until data is ready
+- **Collection physical stats** — three new fun metric cards in Analytics: total weight (g / kg), total stack height from coin thickness (mm / cm / m), and total row length from diameter (mm / cm / m); each card shows how many coins contributed data
+- **Desktop launcher** — `NumiScan.cmd` shortcut on the desktop starts the dev server and opens the browser automatically
+
+### Changed
+- `fetchCoins` now tracks loading state (`isLoading`); tab content hidden during initial fetch
+- Analytics grid for physical stats uses 3-column layout matching the existing stat widgets
+
+---
+
+### Додано
+- **Індикатор завантаження** — анімований спінер з іконкою монети відображається при першому запуску, поки дані завантажуються з бази; всі вкладки заблоковані до завершення
+- **Фізичні параметри колекції** — три нові картки на вкладці Статистика: загальна вага (г / кг), висота стопки монет (мм / см / м), довжина монет у ряд (мм / см / м); у підписі — кількість монет з даними
+- **Ярлик запуску** — файл `NumiScan.cmd` на робочому столі запускає сервер і відкриває браузер
+
+### Змінено
+- `fetchCoins` відстежує стан `isLoading`; вміст вкладок приховується під час першого завантаження
+- Сітка фізичних параметрів у Статистиці — 3 колонки
+
+---
+
 ## [Unreleased] — 2026-06-17
 
 ### Added

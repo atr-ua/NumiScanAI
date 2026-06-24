@@ -32,6 +32,7 @@ export default function App() {
   });
   const [duplicates, setDuplicates] = useState<Coin[]>([]);
   const [countryFilter, setCountryFilter] = useState<string | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   // Fetch all coins on mount
   useEffect(() => {
     fetchCoins();
@@ -48,6 +49,7 @@ export default function App() {
   }, []);
 
   const fetchCoins = async () => {
+    setIsLoading(true);
     try {
       const res = await fetch("/api/coins");
       if (res.ok) {
@@ -56,6 +58,8 @@ export default function App() {
       }
     } catch (err) {
       console.error("Помилка завантаження колекції:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -322,7 +326,22 @@ export default function App() {
 
         {/* Tab Content Rendering */}
         <div className="w-full">
-          {activeTab === "database" && (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center gap-6 py-24 animate-fade-in">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-2 border-[#D4AF37]/20 border-t-[#D4AF37] animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-8 h-8 bg-gradient-to-tr from-[#D4AF37] to-[#F2D06B] rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(212,175,55,0.3)]">
+                    <div className="w-4 h-4 border-2 border-[#0A0A0B] rounded-full" />
+                  </div>
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="text-white font-semibold text-sm">Завантаження колекції...</p>
+                <p className="text-white/40 text-xs mt-1 font-mono">Зчитування бази даних монет</p>
+              </div>
+            </div>
+          ) : activeTab === "database" && (
             <div className="animate-fade-in w-full">
               <CoinDatabase
                 coins={coins}
@@ -337,7 +356,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "recognition" && (
+          {!isLoading && activeTab === "recognition" && (
             <div className="flex flex-col gap-6 animate-fade-in">
             {/* Model selector */}
             <div className="flex items-center gap-3 flex-wrap">
@@ -497,7 +516,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "statistics" && (
+          {!isLoading && activeTab === "statistics" && (
             <div className="animate-fade-in w-full">
               <CollectionAnalytics
                 coins={coins}
@@ -509,7 +528,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === "service" && (
+          {!isLoading && activeTab === "service" && (
             <div className="animate-fade-in w-full">
               <ServicePage
                 catalogCoins={filteredCatalogCoins}
