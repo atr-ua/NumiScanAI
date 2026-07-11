@@ -14,6 +14,7 @@ const GEO_URL = "/countries-110m.json";
 
 interface WorldMapProps {
   coins: Coin[];
+  onCountryClick?: (isoCode: string) => void;
 }
 
 const getCountryFill = (count: number, maxCount: number): string => {
@@ -26,7 +27,7 @@ const getCountryFill = (count: number, maxCount: number): string => {
   return `rgb(${r},${g},${b})`;
 };
 
-export default memo(function WorldMap({ coins }: WorldMapProps) {
+export default memo(function WorldMap({ coins, onCountryClick }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; count: number; x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [center, setCenter] = useState<[number, number]>([10, 10]);
@@ -115,14 +116,11 @@ export default memo(function WorldMap({ coins }: WorldMapProps) {
                     stroke="#2a2a2d"
                     strokeWidth={0.4}
                     style={{
-                      default: { outline: "none", cursor: isActive ? "pointer" : "default" },
+                      default: { outline: "none", cursor: isActive && onCountryClick ? "pointer" : isActive ? "default" : "default" },
                       hover: { outline: "none", fill: isActive ? "#F2D06B" : "#28282c" },
-                      pressed: { outline: "none" },
+                      pressed: { outline: "none", fill: isActive ? "#e8c14a" : "#28282c" },
                     }}
                     onMouseEnter={(e) => {
-                      const rect = (e.target as SVGElement).closest("svg")!.getBoundingClientRect();
-                      const svgParent = (e.target as SVGElement).closest(".rsm-map-container")?.getBoundingClientRect()
-                        || rect;
                       setTooltip({
                         name,
                         count,
@@ -131,6 +129,9 @@ export default memo(function WorldMap({ coins }: WorldMapProps) {
                       });
                     }}
                     onMouseLeave={() => setTooltip(null)}
+                    onClick={() => {
+                      if (isActive && code && onCountryClick) onCountryClick(code);
+                    }}
                   />
                 );
               })
@@ -162,6 +163,9 @@ export default memo(function WorldMap({ coins }: WorldMapProps) {
           </div>
         )}
       </div>
+      {onCountryClick && (
+        <p className="text-[10px] text-white/20 font-mono mt-2 px-1">Клік по закрашеній країні → фільтр у каталозі</p>
+      )}
     </div>
   );
 });

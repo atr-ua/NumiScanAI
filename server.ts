@@ -22,8 +22,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 app.use(express.json({ limit: "20mb" }));
 
 // Safe environment key handling
-const getApiKey    = () => process.env.GEMINI_API_KEY || "";
-const getOpenAiKey = () => process.env.OPENAI_API_KEY || "";
+const getApiKey      = () => process.env.GEMINI_API_KEY || "";
+const getOpenAiKey   = () => process.env.OPENAI_API_KEY || "";
+const getLmStudioUrl = (reqUrl?: string) =>
+  (reqUrl || process.env.LM_STUDIO_URL || "http://localhost:1234").replace(/\/$/, "");
+const getOllamaUrl   = (reqUrl?: string) =>
+  (reqUrl || process.env.OLLAMA_URL || "http://localhost:11434").replace(/\/$/, "");
 
 // API: Version info from git
 app.get("/api/version", async (_req, res) => {
@@ -250,14 +254,14 @@ const COIN_JSON_FIELDS = `{
   "edge": "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'/'комбінований'",
   "rarity": "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна'",
   "grade": "'VF'/'XF'/'UNC'",
-  "historicalContext": "Опис монети, символіки, тиражу — українською",
+  "historicalContext": "Розгорнутий нумізматичний опис українською мовою (мінімум 4–6 речень). Обов'язково охопити: (1) історичний та політичний контекст випуску монети — епоха, держава, правитель або подія; (2) детальний опис зображень — хто або що зображено на аверсі й реверсі, символіка гербів, написів, орнаментів; (3) обставини карбування — чи є монета обіговою, ювілейною, пам'ятною, пробною; серія якщо є; (4) нумізматична цікавість — відомі різновиди, помилки карбування, особливості тиражу, причини колекційного попиту; (5) сучасна колекційна цінність і де монета зустрічається.",
   "imagesSwapped": "true якщо перше фото — реверс, false — інакше"
 }`;
 
 const buildCoinSystemPrompt = (isRefinement: boolean) =>
   isRefinement
-    ? `You are an expert world coin analyst and professional numismatist with deep knowledge of NGC, PCGS, Krause Standard Catalog, and national mint records. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, historical context). Respond with structured JSON only, matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`
-    : `You are an expert world coin analyst and professional numismatist with encyclopedic knowledge of world coinage across all eras and countries. You have access to NGC, PCGS, Krause Standard Catalog of World Coins, and national mint databases. Identify the coin from the provided image(s) with maximum precision. Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian. Metal composition, rarity, country, and historical context must be in Ukrainian.`;
+    ? `You are an expert world coin analyst and professional numismatist with deep knowledge of NGC, PCGS, Krause Standard Catalog, and national mint records. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, historical context). For historicalContext write a rich, detailed paragraph (minimum 4–6 sentences) covering historical background, imagery description, minting circumstances, and collector significance. Respond with structured JSON only, matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`
+    : `You are an expert world coin analyst and professional numismatist with encyclopedic knowledge of world coinage across all eras and countries. You have access to NGC, PCGS, Krause Standard Catalog of World Coins, and national mint databases. Identify the coin from the provided image(s) with maximum precision. For the historicalContext field, write a rich, detailed description of minimum 4–6 sentences covering: the historical and political context of issuance, a thorough description of the obverse and reverse imagery and symbolism, whether the coin is circulating or commemorative, any notable varieties or minting peculiarities, and its current collector significance. Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`;
 
 const COIN_VISUAL_HINTS = `Examine carefully: country name, denomination value, year of minting, ruler portrait or national emblem, mint mark, inscription language and script, edge design, and any special commemorative text. Cross-reference both sides to confirm identification. If ambiguous, choose the most likely candidate based on numismatic visual elements.`;
 
@@ -268,9 +272,48 @@ const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, corre
       ? `Two images of the same coin are provided: the first is the obverse (heads), the second is the reverse (tails). Use BOTH images together to identify the coin as precisely as possible. ${COIN_VISUAL_HINTS} Also check whether the images are actually in the correct order — if the first image appears to be the reverse and the second the obverse, set imagesSwapped=true. All text fields MUST be in Ukrainian.`
       : `Identify this coin from the image. ${COIN_VISUAL_HINTS} All text fields MUST be in Ukrainian.`;
 
+// API: Fetch available models from LM Studio
+app.get("/api/lm-studio-models", async (req, res) => {
+  const url   = getLmStudioUrl(req.query.url as string);
+  const token = (req.query.token as string) || "";
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const r = await fetch(`${url}/api/v1/models`, { headers });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    const data = await r.json();
+    const list = data.models || data.data || [];
+    const models = list.map((m: any) => ({
+      id:          `lms:${m.key || m.id}`,
+      displayName: m.display_name || m.key || m.id,
+    }));
+    res.json(models);
+  } catch (e: any) {
+    res.status(500).json({ error: `Не вдалося підключитися до LM Studio (${url}): ${e.message}` });
+  }
+});
+
+// API: Fetch available models from Ollama
+app.get("/api/ollama-models", async (req, res) => {
+  const url = getOllamaUrl(req.query.url as string);
+  try {
+    const r = await fetch(`${url}/api/tags`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+    const data = await r.json();
+    const models = (data.models || []).map((m: any) => ({
+      id:          `oll:${m.name}`,
+      displayName: m.name,
+      size:        m.size ? `${(m.size / 1e9).toFixed(1)} GB` : "",
+    }));
+    res.json(models);
+  } catch (e: any) {
+    res.status(500).json({ error: `Не вдалося підключитися до Ollama (${url}): ${e.message}` });
+  }
+});
+
 // API: Recognize coin via Gemini or OpenAI (auto-detected by model prefix)
 app.post("/api/recognize-coin", async (req, res) => {
-  const { image, imageReverse, correction, previousResult, model } = req.body;
+  const { image, imageReverse, correction, previousResult, model, lmStudioUrl, lmStudioToken, ollamaUrl } = req.body;
   const modelName: string = model || "gemini-2.0-flash";
   if (!image) return res.status(400).json({ error: "Зображення не передано" });
 
@@ -278,7 +321,95 @@ app.post("/api/recognize-coin", async (req, res) => {
   const base64Match  = image.match(/^data:image\/\w+;base64,(.+)$/);
   const cleanBase64  = base64Match ? base64Match[1] : image;
 
-  const isOpenAI = modelName.startsWith("gpt-") || /^o\d/.test(modelName);
+  const isLMStudio = modelName.startsWith("lms:");
+  const isOllama   = modelName.startsWith("oll:");
+  const isOpenAI   = !isLMStudio && !isOllama && (modelName.startsWith("gpt-") || /^o\d/.test(modelName));
+
+  // ── LM Studio path ────────────────────────────────────────────────────────
+  if (isLMStudio) {
+    const studioUrl  = getLmStudioUrl(lmStudioUrl);
+    const realModel  = modelName.slice(4); // strip "lms:" prefix
+    try {
+      const lmClient = new OpenAI({ baseURL: `${studioUrl}/v1`, apiKey: lmStudioToken || "lm-studio" });
+
+      const userContent: OpenAI.ChatCompletionContentPart[] = [
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanBase64}`, detail: "high" } },
+      ];
+
+      if (imageReverse) {
+        const revMatch = (imageReverse as string).match(/^data:image\/\w+;base64,(.+)$/);
+        const cleanRev = revMatch ? revMatch[1] : imageReverse;
+        userContent.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanRev}`, detail: "high" } });
+      }
+
+      const hasBothSides = userContent.length > 1;
+      userContent.push({
+        type: "text",
+        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult)
+          + `\n\nПоверни ТІЛЬКИ JSON-об'єкт з такими полями:\n${COIN_JSON_FIELDS}\nБез markdown, без пояснень — лише JSON.`,
+      });
+
+      const response = await lmClient.chat.completions.create({
+        model: realModel,
+        messages: [
+          { role: "system", content: buildCoinSystemPrompt(isRefinement) + "\nВідповідай ВИКЛЮЧНО у форматі JSON-об'єкта. Без markdown, без пояснень." },
+          { role: "user",   content: userContent },
+        ],
+        response_format: { type: "text" },
+        max_tokens: 2500,
+        temperature: 0.1,
+      });
+
+      const raw     = response.choices[0].message.content || "{}";
+      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+      return res.json(JSON.parse(jsonStr));
+    } catch (error: any) {
+      console.error("Помилка LM Studio API:", error);
+      return res.status(500).json({ error: error.message || "Помилка LM Studio API" });
+    }
+  }
+
+  // ── Ollama path ───────────────────────────────────────────────────────────
+  if (isOllama) {
+    const studioUrl = getOllamaUrl(ollamaUrl);
+    const realModel = modelName.slice(4); // strip "oll:"
+    try {
+      const ollClient = new OpenAI({ baseURL: `${studioUrl}/v1`, apiKey: "ollama" });
+
+      const userContent: OpenAI.ChatCompletionContentPart[] = [
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanBase64}`, detail: "high" } },
+      ];
+      if (imageReverse) {
+        const revMatch = (imageReverse as string).match(/^data:image\/\w+;base64,(.+)$/);
+        const cleanRev = revMatch ? revMatch[1] : imageReverse;
+        userContent.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanRev}`, detail: "high" } });
+      }
+      const hasBothSides = userContent.length > 1;
+      userContent.push({
+        type: "text",
+        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult)
+          + `\n\nПоверни ТІЛЬКИ JSON-об'єкт з полями:\n${COIN_JSON_FIELDS}\nБез markdown, без пояснень — лише JSON.`,
+      });
+
+      const response = await ollClient.chat.completions.create({
+        model: realModel,
+        messages: [
+          { role: "system", content: buildCoinSystemPrompt(isRefinement) + "\nВідповідай ВИКЛЮЧНО у форматі JSON-об'єкта. Без markdown, без пояснень." },
+          { role: "user",   content: userContent },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2500,
+        temperature: 0.1,
+      });
+
+      const raw     = response.choices[0].message.content || "{}";
+      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+      return res.json(JSON.parse(jsonStr));
+    } catch (error: any) {
+      console.error("Помилка Ollama API:", error);
+      return res.status(500).json({ error: error.message || "Помилка Ollama API" });
+    }
+  }
 
   // ── OpenAI path ───────────────────────────────────────────────────────────
   if (isOpenAI) {
@@ -334,7 +465,7 @@ app.post("/api/recognize-coin", async (req, res) => {
           type: "json_schema",
           json_schema: { name: "coin_identification", strict: true, schema: coinSchema },
         },
-        max_tokens: 1500,
+        max_tokens: 2500,
       });
 
       const parsedJson = JSON.parse(response.choices[0].message.content || "{}");

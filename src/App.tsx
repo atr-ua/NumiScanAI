@@ -90,7 +90,7 @@ export default function App() {
       const res = await fetch("/api/recognize-coin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: obverse, imageReverse: reverse, model: selectedModel }),
+        body: JSON.stringify({ image: obverse, imageReverse: reverse, model: selectedModel, lmStudioUrl: localStorage.getItem("lmStudioUrl") || "", lmStudioToken: localStorage.getItem("lmStudioToken") || "", ollamaUrl: localStorage.getItem("ollamaUrl") || "" }),
       });
 
       if (!res.ok) {
@@ -126,6 +126,7 @@ export default function App() {
         ...recentRecognized,
         title: refinedTitle,
         notes: notesInput,
+        ...(duplicates.length > 0 && recentRecognized.category === undefined ? { category: 7 } : {}),
       };
 
       const res = await fetch("/api/coins", {
@@ -368,13 +369,21 @@ export default function App() {
                   onClick={() => { setSelectedModel(id); localStorage.setItem("selectedModel", id); }}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-mono font-bold border transition-all cursor-pointer ${
                     selectedModel === id
-                      ? id.startsWith("gpt-") || /^o\d/.test(id)
+                      ? id.startsWith("lms:")
+                        ? "bg-violet-500/15 border-violet-500/40 text-violet-400"
+                        : id.startsWith("oll:")
+                        ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400"
+                        : id.startsWith("gpt-") || /^o\d/.test(id)
                         ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
                         : "bg-[#D4AF37]/15 border-[#D4AF37]/50 text-[#D4AF37]"
                       : "bg-transparent border-white/10 text-white/40 hover:border-white/25 hover:text-white/60"
                   }`}
                 >
-                  {id.startsWith("gemini-")
+                  {id.startsWith("lms:")
+                    ? id.slice(4)
+                    : id.startsWith("oll:")
+                    ? id.slice(4)
+                    : id.startsWith("gemini-")
                     ? id.replace("gemini-", "").replace("-preview", "★")
                     : id}
                 </button>

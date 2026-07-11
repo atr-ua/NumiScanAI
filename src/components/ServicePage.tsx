@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useRef } from "react";
-import { Server, Code, Copy, Check, ShieldCheck, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle, FileText, Download, Zap } from "lucide-react";
+import { Server, Code, Copy, Check, ShieldCheck, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle, FileText, Download, Zap, X } from "lucide-react";
 import type { Coin } from "../types";
 
 interface ServicePageProps {
@@ -59,6 +59,67 @@ const BATCH_MODELS = [
 export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterDescription = "", selectedModel, onModelChange, pinnedModels = [], onPinnedModelsChange }: ServicePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [batchModel, setBatchModel] = useState(() => localStorage.getItem("batchMintageModel") || "gemini-2.5-flash");
+
+  // Ollama state
+  const [ollamaUrl, setOllamaUrl] = useState(() => localStorage.getItem("ollamaUrl") || "http://192.168.50.1:11434");
+  const [ollamaCustomModel, setOllamaCustomModel] = useState("");
+  const [ollamaCustomModels, setOllamaCustomModels] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("ollamaCustomModels") || "[]"); } catch { return []; }
+  });
+  const [ollamaModels, setOllamaModels] = useState<{ id: string; displayName: string; size: string }[]>([]);
+  const [ollLoading, setOllLoading] = useState(false);
+  const [ollError, setOllError] = useState<string | null>(null);
+  const [ollFetched, setOllFetched] = useState(false);
+
+  const fetchOllamaModels = async () => {
+    setOllLoading(true);
+    setOllError(null);
+    try {
+      const res  = await fetch(`/api/ollama-models?url=${encodeURIComponent(ollamaUrl)}`);
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { throw new Error("Сервер повернув не-JSON. Перезапустіть server.ts."); }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setOllamaModels(data);
+      setOllFetched(true);
+    } catch (e: any) {
+      setOllError(e.message);
+    } finally {
+      setOllLoading(false);
+    }
+  };
+
+  // LM Studio state
+  const [lmStudioUrl, setLmStudioUrl] = useState(() => localStorage.getItem("lmStudioUrl") || "http://127.0.0.1:1234");
+  const [lmStudioToken, setLmStudioToken] = useState(() => localStorage.getItem("lmStudioToken") || "");
+  const [lmStudioModels, setLmStudioModels] = useState<{ id: string; displayName: string }[]>([]);
+  const [lmLoading, setLmLoading] = useState(false);
+  const [lmError, setLmError] = useState<string | null>(null);
+  const [lmFetched, setLmFetched] = useState(false);
+
+  const fetchLmStudioModels = async () => {
+    setLmLoading(true);
+    setLmError(null);
+    try {
+      const params = new URLSearchParams({ url: lmStudioUrl });
+      if (lmStudioToken) params.set("token", lmStudioToken);
+      const res  = await fetch(`/api/lm-studio-models?${params}`);
+      const text = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Сервер повернув не-JSON відповідь. Перезапустіть server.ts і спробуйте знову.");
+      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setLmStudioModels(data);
+      setLmFetched(true);
+    } catch (e: any) {
+      setLmError(e.message);
+    } finally {
+      setLmLoading(false);
+    }
+  };
 
   // Dynamic Gemini model list
   const [geminiModels, setGeminiModels] = useState<GeminiModel[]>([]);
@@ -721,6 +782,323 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
             );
           })}
         </div>
+      </div>
+
+      {/* LM Studio Models */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-violet-400" />
+          <h3 className="text-white font-semibold text-sm font-sans">LM Studio (локальні моделі)</h3>
+          <span className="text-[10px] font-mono text-white/30 ml-auto">OpenAI-compatible · порт 1234</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Використовує локальний LM Studio на хості. Потрібна мультимодальна модель із підтримкою зображень — наприклад{" "}
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded">gemma-3</code>,{" "}
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded">qwen2.5-vl</code>,{" "}
+          <code className="text-white/70 font-mono bg-black/40 px-1 py-0.5 rounded">llava</code>.
+          Вкажіть IP хоста та натисніть «Підключити».
+        </p>
+
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Адреса сервера</span>
+              <input
+                type="text"
+                value={lmStudioUrl}
+                onChange={e => { setLmStudioUrl(e.target.value); localStorage.setItem("lmStudioUrl", e.target.value); }}
+                placeholder="http://127.0.0.1:1234"
+                className="bg-black/40 border border-white/10 text-white/80 text-xs font-mono px-3 py-2 rounded-xl focus:outline-none focus:border-violet-500/40 placeholder-white/20 w-full"
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="text-[10px] font-mono text-white/25 uppercase tracking-widest">Bearer токен (якщо є)</span>
+              <input
+                type="password"
+                value={lmStudioToken}
+                onChange={e => { setLmStudioToken(e.target.value); localStorage.setItem("lmStudioToken", e.target.value); }}
+                placeholder="lms-…"
+                className="bg-black/40 border border-white/10 text-white/80 text-xs font-mono px-3 py-2 rounded-xl focus:outline-none focus:border-violet-500/40 placeholder-white/20 w-full"
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={fetchLmStudioModels}
+            disabled={lmLoading}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-violet-500/10 border border-violet-500/30 text-violet-400 hover:bg-violet-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${lmLoading ? "animate-spin" : ""}`} />
+            {lmLoading ? "Підключення…" : lmFetched ? "Оновити список моделей" : "Підключити до LM Studio"}
+          </button>
+        </div>
+
+        {lmError && (
+          <div className="text-[11px] font-mono px-3 py-2 rounded-xl border border-red-500/20 text-red-400/80 bg-red-500/5">
+            {lmError}
+          </div>
+        )}
+
+        {lmStudioModels.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-white/35">
+              <span>Закріплено для розпізнавання:</span>
+              <span className={`font-bold ${pinnedModels.length >= 6 ? "text-amber-400" : "text-violet-400/70"}`}>
+                {pinnedModels.length}/6
+              </span>
+              <span className="text-white/20">— відображаються як кнопки на вкладці ШІ</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {lmStudioModels.map((m) => {
+                const active  = selectedModel === m.id;
+                const pinned  = pinnedModels.includes(m.id);
+                const canPin  = !pinned && pinnedModels.length < 6;
+
+                const togglePin = () => {
+                  const next = pinned
+                    ? pinnedModels.filter(id => id !== m.id)
+                    : [...pinnedModels, m.id];
+                  onPinnedModelsChange?.(next);
+                };
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border transition-all ${
+                      pinned
+                        ? "bg-violet-500/8 border-violet-500/30"
+                        : "bg-black/30 border-white/6 hover:border-white/15"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 px-3.5 pt-2.5 pb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[11px] font-mono font-bold truncate ${pinned ? "text-violet-400" : "text-white/70"}`}>
+                            {m.displayName}
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-violet-400/70 shrink-0">
+                            LM Studio
+                          </span>
+                          {active && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-violet-500/15 border border-violet-500/30 text-violet-400 shrink-0">
+                              активна
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          type="button"
+                          title={pinned ? "Зняти закріплення" : canPin ? "Закріпити для розпізнавання" : "Ліміт 6 моделей"}
+                          disabled={!pinned && !canPin}
+                          onClick={togglePin}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${
+                            pinned
+                              ? "bg-violet-500/15 border-violet-500/40 text-violet-400"
+                              : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                          }`}
+                        >
+                          <svg className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          title="Встановити активною"
+                          onClick={() => { localStorage.setItem("selectedModel", m.id); onModelChange?.(m.id); }}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                            active
+                              ? "bg-violet-500/15 border-violet-500/40 text-violet-400"
+                              : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"
+                          }`}
+                        >
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Ollama */}
+      <div className="border-t border-white/5 pt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Cpu className="h-4 w-4 text-cyan-400" />
+          <h3 className="text-white font-semibold text-sm font-sans">Ollama (локальні моделі)</h3>
+          <span className="text-[10px] font-mono text-white/30 ml-auto">OpenAI-compatible · порт 11434</span>
+        </div>
+        <p className="text-xs text-white/50 leading-relaxed font-sans">
+          Використовує Ollama на хості. Потрібна мультимодальна модель —{" "}
+          <code className="text-cyan-400/80 font-mono bg-black/40 px-1 py-0.5 rounded">ollama pull llava</code>,{" "}
+          <code className="text-cyan-400/80 font-mono bg-black/40 px-1 py-0.5 rounded">gemma3</code>,{" "}
+          <code className="text-cyan-400/80 font-mono bg-black/40 px-1 py-0.5 rounded">llama3.2-vision</code> тощо.
+          Вкажіть IP хоста та натисніть «Підключити».
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={ollamaUrl}
+            onChange={e => { setOllamaUrl(e.target.value); localStorage.setItem("ollamaUrl", e.target.value); }}
+            placeholder="http://192.168.50.1:11434"
+            className="flex-1 bg-black/40 border border-white/10 text-white/80 text-xs font-mono px-3 py-2 rounded-xl focus:outline-none focus:border-cyan-500/40 placeholder-white/20"
+          />
+          <button type="button" onClick={fetchOllamaModels} disabled={ollLoading}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+            <RefreshCw className={`h-3.5 w-3.5 ${ollLoading ? "animate-spin" : ""}`} />
+            {ollLoading ? "Підключення…" : ollFetched ? "Оновити" : "Підключити"}
+          </button>
+        </div>
+
+        {ollError && (
+          <div className="text-[11px] font-mono px-3 py-2 rounded-xl border border-red-500/20 text-red-400/80 bg-red-500/5">{ollError}</div>
+        )}
+
+        {/* Manual model entry — always shown */}
+        <div className="flex gap-2 items-center">
+          <input
+            type="text"
+            value={ollamaCustomModel}
+            onChange={e => setOllamaCustomModel(e.target.value)}
+            onKeyDown={e => {
+              if (e.key !== "Enter") return;
+              const name = ollamaCustomModel.trim();
+              if (!name) return;
+              const id = `oll:${name}`;
+              if (!ollamaCustomModels.includes(name)) {
+                const next = [...ollamaCustomModels, name];
+                setOllamaCustomModels(next);
+                localStorage.setItem("ollamaCustomModels", JSON.stringify(next));
+              }
+              if (!pinnedModels.includes(id) && pinnedModels.length < 6) {
+                onPinnedModelsChange?.([...pinnedModels, id]);
+              }
+              localStorage.setItem("selectedModel", id);
+              onModelChange?.(id);
+              setOllamaCustomModel("");
+            }}
+            placeholder="Введіть назву моделі: minimax-m3:cloud"
+            className="flex-1 bg-black/40 border border-white/10 text-white/80 text-xs font-mono px-3 py-2 rounded-xl focus:outline-none focus:border-cyan-500/40 placeholder-white/20"
+          />
+          <button
+            type="button"
+            disabled={!ollamaCustomModel.trim()}
+            onClick={() => {
+              const name = ollamaCustomModel.trim();
+              if (!name) return;
+              const id = `oll:${name}`;
+              if (!ollamaCustomModels.includes(name)) {
+                const next = [...ollamaCustomModels, name];
+                setOllamaCustomModels(next);
+                localStorage.setItem("ollamaCustomModels", JSON.stringify(next));
+              }
+              if (!pinnedModels.includes(id) && pinnedModels.length < 6) {
+                onPinnedModelsChange?.([...pinnedModels, id]);
+              }
+              localStorage.setItem("selectedModel", id);
+              onModelChange?.(id);
+              setOllamaCustomModel("");
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            + Додати
+          </button>
+        </div>
+
+        {(ollamaModels.length > 0 || ollamaCustomModels.length > 0) && (
+          <>
+            <div className="flex items-center gap-2 text-[11px] font-mono text-white/35">
+              <span>Закріплено:</span>
+              <span className={`font-bold ${pinnedModels.length >= 6 ? "text-amber-400" : "text-cyan-400/70"}`}>{pinnedModels.length}/6</span>
+              <span className="text-white/20">— відображаються як кнопки на вкладці ШІ</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Custom (manual) models */}
+              {ollamaCustomModels.map((name) => {
+                const m = { id: `oll:${name}`, displayName: name };
+                const active  = selectedModel === m.id;
+                const pinned  = pinnedModels.includes(m.id);
+                const canPin  = !pinned && pinnedModels.length < 6;
+                const togglePin = () => onPinnedModelsChange?.(pinned ? pinnedModels.filter(id => id !== m.id) : [...pinnedModels, m.id]);
+                const removeCustom = () => {
+                  const next = ollamaCustomModels.filter(n => n !== name);
+                  setOllamaCustomModels(next);
+                  localStorage.setItem("ollamaCustomModels", JSON.stringify(next));
+                  if (pinned) onPinnedModelsChange?.(pinnedModels.filter(id => id !== m.id));
+                };
+                return (
+                  <div key={m.id} className={`rounded-xl border transition-all ${pinned ? "bg-cyan-500/8 border-cyan-500/30" : "bg-black/30 border-white/6 hover:border-white/15"}`}>
+                    <div className="flex items-start gap-2 px-3.5 pt-2.5 pb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[11px] font-mono font-bold truncate ${pinned ? "text-cyan-400" : "text-white/70"}`}>{m.displayName}</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400/70 shrink-0">Ollama</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/30 shrink-0">custom</span>
+                          {active && <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 shrink-0">активна</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button type="button" title={pinned ? "Зняти" : canPin ? "Закріпити" : "Ліміт 6"} disabled={!pinned && !canPin} onClick={togglePin}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${pinned ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400" : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"}`}>
+                          <svg className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                          </svg>
+                        </button>
+                        <button type="button" title="Встановити активною" onClick={() => { localStorage.setItem("selectedModel", m.id); onModelChange?.(m.id); }}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${active ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400" : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"}`}>
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" title="Видалити" onClick={removeCustom}
+                          className="p-1.5 rounded-lg border border-white/6 text-white/15 hover:border-red-500/30 hover:text-red-400/70 transition-all cursor-pointer">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Fetched models from /api/tags */}
+              {ollamaModels.map((m) => {
+                const active  = selectedModel === m.id;
+                const pinned  = pinnedModels.includes(m.id);
+                const canPin  = !pinned && pinnedModels.length < 6;
+                const togglePin = () => onPinnedModelsChange?.(pinned ? pinnedModels.filter(id => id !== m.id) : [...pinnedModels, m.id]);
+
+                return (
+                  <div key={m.id} className={`rounded-xl border transition-all ${pinned ? "bg-cyan-500/8 border-cyan-500/30" : "bg-black/30 border-white/6 hover:border-white/15"}`}>
+                    <div className="flex items-start gap-2 px-3.5 pt-2.5 pb-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[11px] font-mono font-bold truncate ${pinned ? "text-cyan-400" : "text-white/70"}`}>{m.displayName}</span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400/70 shrink-0">Ollama</span>
+                          {m.size && <span className="text-[9px] font-mono text-white/25 shrink-0">{m.size}</span>}
+                          {active && <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 shrink-0">активна</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button type="button" title={pinned ? "Зняти" : canPin ? "Закріпити" : "Ліміт 6"} disabled={!pinned && !canPin} onClick={togglePin}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed ${pinned ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400" : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"}`}>
+                          <svg className="h-3.5 w-3.5" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                          </svg>
+                        </button>
+                        <button type="button" title="Встановити активною" onClick={() => { localStorage.setItem("selectedModel", m.id); onModelChange?.(m.id); }}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${active ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-400" : "bg-transparent border-white/10 text-white/25 hover:border-white/30 hover:text-white/50"}`}>
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* PDF Catalog */}

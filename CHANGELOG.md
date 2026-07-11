@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 
 ---
 
+## [Unreleased] — 2026-07-11
+
+### Added
+- **Ollama custom model entry** — manual input field on the Services page lets users add any Ollama model name (e.g. `minimax-m3:cloud`) that `/api/tags` does not return; custom models persist in `localStorage`, appear with a "custom" badge, and can be individually removed
+- **LM Studio support** — Services page now includes an LM Studio section with URL config, model list fetched from `/v1/models`, pin/unpin, and the same custom model input field
+- **World map click → country filter** — clicking a highlighted country on the WorldMap choropleth now sets the country filter in the Catalog; `WorldMap` accepts an `onCountryClick` callback; `CollectionAnalytics` passes it through; `CoinDatabase` resolves ISO codes to Ukrainian country names using `getCountryIsoCode`
+- **Coin ID in detail card header** — full coin ID displayed in tiny monospace text next to the card title; click to copy to clipboard; hidden in edit mode
+- **Lightbox keyboard & swipe navigation**:
+  - **Enter** (catalog lightbox) → opens coin detail card; closing the card returns to the same lightbox position
+  - **Esc** closes the detail card (dedicated `useEffect` with `zoomedImageRef` to avoid closing when lightbox is open)
+  - **Touch swipe** — vertical swipe navigates between coins (↑ = next, ↓ = prev); horizontal swipe toggles obverse/reverse; 50 px threshold
+- **`fromCatalog` preserved** — arrow-key and scroll-wheel navigation between coins in the lightbox now carries the `fromCatalog` flag forward so Enter-to-card and hint text stay correct
+
+### Fixed
+- **Czech Republic flag** — "Чеська Республіка" (adjective form "чеськ") now correctly resolves to `🇨🇿`; both `getCountryIsoCode` and the emoji helper updated
+- **Detail card scroll** — eliminated unwanted scrollbar: reduced padding (`p-6` → `px-5 py-3`), image heights (`h-56` → `h-40`), merged two date rows into one line, hidden notes block when empty and not editing, compact footer
+
+### Changed
+- Detail card header now shows the coin ID instead of a separate copy button
+- Lightbox hint text updated: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
+
+---
+
+### Додано
+- **Ручне введення моделі Ollama** — поле вводу на сторінці Сервісів дозволяє додати будь-яку назву моделі Ollama (наприклад `minimax-m3:cloud`), яка не відображається у `/api/tags`; кастомні моделі зберігаються в `localStorage`, позначаються бейджем "custom" і видаляються кнопкою ×
+- **Підтримка LM Studio** — сторінка Сервісів тепер включає секцію LM Studio з налаштуванням URL, завантаженням моделей із `/v1/models`, закріпленням і полем введення кастомних моделей
+- **Клік по карті → фільтр** — клік по забарвленій країні на хороплет-карті встановлює фільтр країни в Каталозі; `WorldMap` отримує callback `onCountryClick`; `CoinDatabase` резолвить ISO-коди до українських назв через `getCountryIsoCode`
+- **ID монети в заголовку картки** — повний ID відображається дрібним моноширинним шрифтом поряд з назвою; клік копіює в буфер; приховується в режимі редагування
+- **Навігація в лайтбоксі клавіатурою та свайпом**:
+  - **Enter** (лайтбокс з каталогу) → відкриває картку монети; закриття картки повертає до лайтбоксу
+  - **Esc** закриває картку монети (окремий `useEffect` з `zoomedImageRef`)
+  - **Touch-свайп** — вертикальний свайп (поріг 50 пк) перемикає монети; горизонтальний — аверс/реверс
+- **Збереження `fromCatalog`** — навігація стрілками та колесом миші між монетами тепер зберігає прапор `fromCatalog`
+
+### Виправлено
+- **Прапор Чехії** — "Чеська Республіка" (форма "чеськ") тепер коректно резолвиться до `🇨🇿`
+- **Скрол у картці монети** — усунено небажану смугу прокрутки: зменшено відступи, висоти зображень, об'єднано рядки дат, нотатки приховані коли порожні і не в режимі редагування
+
+### Змінено
+- Заголовок картки монети тепер показує ID замість окремої кнопки копіювання
+- Підказка лайтбоксу оновлена: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
+
+---
+
 ## [Unreleased] — 2026-06-24
 
 ### Added

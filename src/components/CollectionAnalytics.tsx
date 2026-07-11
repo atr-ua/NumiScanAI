@@ -369,7 +369,10 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
             <h3 className="text-xs font-mono font-medium uppercase tracking-widest text-[#D4AF37] flex items-center gap-2">
               <Globe className="h-4 w-4" /> Географія колекції
             </h3>
-            <WorldMap coins={coins} />
+            <WorldMap
+              coins={coins}
+              onCountryClick={onFilterByCountry ? (code) => onFilterByCountry(`iso:${code}`) : undefined}
+            />
           </div>
 
           {/* Real-time stats widgets */}

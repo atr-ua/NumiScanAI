@@ -287,7 +287,13 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
         <div className="text-xs">
           <p className="font-semibold text-white/80">Як працює розпізнавання?</p>
           <p className="text-white/50 leading-relaxed mt-1">
-            Фото передається до моделі <strong>Gemini</strong>. Надання двох сторін значно підвищує точність — ШІ бачить герб, номінал, рік та метал одночасно.
+            Фото передається до обраної моделі ШІ —{" "}
+            <strong className="text-[#D4AF37]/80">Gemini</strong>,{" "}
+            <strong className="text-emerald-400/80">OpenAI</strong>,{" "}
+            <strong className="text-violet-400/80">LM Studio</strong> або{" "}
+            <strong className="text-cyan-400/80">Ollama</strong> (локальні моделі на хості).
+            Надання двох сторін значно підвищує точність — ШІ бачить герб, номінал, рік та метал одночасно.
+            Модель обирається кнопками вище.
           </p>
         </div>
       </div>

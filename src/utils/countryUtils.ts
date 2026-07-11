@@ -67,7 +67,7 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("естон") || lower.includes("eston")) return "ee";
 
   // ── Central & Eastern Europe ──────────────────────────────────────────────
-  if (lower.includes("чех") || lower.includes("czech")) return "cz";
+  if (lower.includes("чех") || lower.includes("чеськ") || lower.includes("czech")) return "cz";
   if (lower.includes("словач") || lower.includes("slovak")) return "sk";
   if (lower.includes("угор") || lower.includes("hungar") || lower.includes("magyar")) return "hu";
   if (lower.includes("румун") || lower.includes("romania")) return "ro";
@@ -333,7 +333,7 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("естон") || lower.includes("eston")) return "🇪🇪";
 
   // ── Central & Eastern Europe ──────────────────────────────────────────────
-  if (lower.includes("чех") || lower.includes("czech")) return "🇨🇿";
+  if (lower.includes("чех") || lower.includes("чеськ") || lower.includes("czech")) return "🇨🇿";
   if (lower.includes("словач") || lower.includes("slovak")) return "🇸🇰";
   if (lower.includes("угор") || lower.includes("hungar") || lower.includes("magyar")) return "🇭🇺";
   if (lower.includes("румун") || lower.includes("romania")) return "🇷🇴";
