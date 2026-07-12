@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 
 ---
 
+## [Unreleased] — 2026-07-12
+
+### Added
+- **Continent completion stats** — new block under the world map in Analytics shows, per continent, how many of its countries are present in the collection (`collected / total · %`) with gold progress bars; powered by a new `CONTINENTS` registry in `countryUtils.ts` (sovereign countries per UN geoscheme + Kosovo/Taiwan/Vatican; Russia → Europe, Turkey/Caucasus/Kazakhstan → Asia); historical entities (USSR, GDR, Yugoslavia) and territories (Hong Kong, Gibraltar, …) intentionally count toward neither numerator nor denominator
+- **Timeline fun-fact chips** — 🏆 record day (count + date), ⚡ average pace (coins/day since first addition), 🔥 current streak of consecutive days with additions (plus best streak)
+- **Cumulative growth chart** — gold SVG area chart of collection size over the entire collecting history (daily granularity); interactive crosshair with tooltip (date, total, added that day) on mouse hover and touch
+- **Period total** — the additions bar chart header now shows the window sum (e.g. "Додано за останні 14 днів: +207 шт"); per-bar tooltip includes the running collection size
+- **Macau mapping** — "Макао"/"Macau" now resolves to `mo` / 🇲🇴
+
+### Fixed
+- **Days tab showed oldest additions** — daily registry keys were built in coin iteration order (API returns newest first), so `.slice(-7)` picked the *oldest* seven days; timeline now aggregates by real local dates, sorts chronologically, and fills gaps with zero-days (last 14 days / 12 months / up to 6 years)
+- **Day key collision across years** — labels like "12 лип." no longer merge the same day of different years
+- **Dateless coins inflated today** — coins without a parseable `createdAt`/`recognizedAt` were counted as added "now"; they are excluded from per-period bars and counted once in the cumulative base
+- **Libya not recognized** — Ukrainian nominative "Лівія" failed the `лівій` root check, so Libya was missing from the map and continent stats; fixed via `startsWith("лівія")` (Bolivia is unaffected — its check runs earlier)
+
+---
+
+### Додано
+- **Заповнення по континентах** — новий блок під картою світу в Аналітиці: для кожного континенту кількість країн у колекції із загальної (`зібрано / всього · %`) з золотими прогрес-барами; базується на новому довіднику `CONTINENTS` у `countryUtils.ts` (суверенні країни за геосхемою ООН + Косово/Тайвань/Ватикан; Росія → Європа, Туреччина/Кавказ/Казахстан → Азія); історичні утворення (СРСР, НДР, Югославія) та території (Гонконг, Гібралтар, …) свідомо не враховуються ані в чисельнику, ані в знаменнику
+- **Метрики-факти таймлайну** — 🏆 рекордний день (кількість + дата), ⚡ середній темп (монет/день з першого додавання), 🔥 поточна серія днів поспіль з додаваннями (та рекордна серія)
+- **Графік зростання колекції** — золота SVG area-діаграма розміру колекції за всю історію збирання (по днях); інтерактивне перехрестя з тултіпом (дата, всього, додано за день) при наведенні миші та дотику
+- **Сума за період** — заголовок бар-чарту показує підсумок вікна (напр. «Додано за останні 14 днів: +207 шт»); підказка стовпчика містить розмір колекції на той момент
+- **Маппінг Макао** — «Макао»/"Macau" тепер резолвиться до `mo` / 🇲🇴
+
+### Виправлено
+- **Вкладка «По днях» показувала найстаріші додавання** — ключі днів створювалися в порядку ітерації монет (API віддає найновіші першими), тому `.slice(-7)` брав *найстаріші* сім днів; тепер агрегація за реальними локальними датами, хронологічне сортування та заповнення порожніх днів нулями (останні 14 днів / 12 місяців / до 6 років)
+- **Колізія ключів днів між роками** — мітки на кшталт «12 лип.» більше не об'єднують однакові дні різних років
+- **Монети без дати завищували сьогодні** — монети без коректної `createdAt`/`recognizedAt` рахувалися як додані «зараз»; тепер вони виключені зі стовпчиків і враховані один раз у базі накопичення
+- **Лівія не розпізнавалася** — українська назва «Лівія» не проходила перевірку за коренем «лівій», тому Лівія не потрапляла на карту та в статистику континентів; виправлено через `startsWith("лівія")` (Болівія не зачеплена — її перевірка спрацьовує раніше)
+
+---
+
 ## [Unreleased] — 2026-07-11
 
 ### Added

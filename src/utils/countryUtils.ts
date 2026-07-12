@@ -5,6 +5,39 @@
  */
 
 /**
+ * Sovereign countries per continent (ISO alpha-2, UN geoscheme + Kosovo/Taiwan/Vatican).
+ * Transcontinental: Russia → Europe; Turkey, Cyprus, Georgia, Armenia, Azerbaijan, Kazakhstan → Asia.
+ * Territories and historical entities (SU, YU, DD, HK, GI, …) are intentionally absent —
+ * they do not count toward continent completion.
+ */
+export const CONTINENTS: { name: string; codes: string[] }[] = [
+  {
+    name: "Європа",
+    codes: ["al", "ad", "at", "by", "be", "ba", "bg", "hr", "cz", "dk", "ee", "fi", "fr", "de", "gr", "hu", "is", "ie", "it", "lv", "li", "lt", "lu", "mt", "md", "mc", "me", "nl", "mk", "no", "pl", "pt", "ro", "ru", "sm", "rs", "sk", "si", "es", "se", "ch", "ua", "gb", "va", "xk"],
+  },
+  {
+    name: "Азія",
+    codes: ["af", "am", "az", "bh", "bd", "bt", "bn", "kh", "cn", "cy", "ge", "in", "id", "ir", "iq", "il", "jp", "jo", "kz", "kw", "kg", "la", "lb", "my", "mv", "mn", "mm", "np", "kp", "om", "pk", "ph", "qa", "sa", "sg", "kr", "lk", "sy", "tw", "tj", "th", "tl", "tr", "tm", "ae", "uz", "vn", "ye"],
+  },
+  {
+    name: "Африка",
+    codes: ["dz", "ao", "bj", "bw", "bf", "bi", "cv", "cm", "cf", "td", "km", "cg", "cd", "ci", "dj", "eg", "gq", "er", "sz", "et", "ga", "gm", "gh", "gn", "gw", "ke", "ls", "lr", "ly", "mg", "mw", "ml", "mr", "mu", "ma", "mz", "na", "ne", "ng", "rw", "st", "sn", "sc", "sl", "so", "za", "ss", "sd", "tz", "tg", "tn", "ug", "zm", "zw"],
+  },
+  {
+    name: "Північна Америка",
+    codes: ["ag", "bs", "bb", "bz", "ca", "cr", "cu", "dm", "do", "sv", "gd", "gt", "ht", "hn", "jm", "mx", "ni", "pa", "kn", "lc", "vc", "tt", "us"],
+  },
+  {
+    name: "Південна Америка",
+    codes: ["ar", "bo", "br", "cl", "co", "ec", "gy", "py", "pe", "sr", "uy", "ve"],
+  },
+  {
+    name: "Океанія",
+    codes: ["au", "fj", "ki", "mh", "fm", "nr", "nz", "pw", "pg", "ws", "sb", "to", "tv", "vu"],
+  },
+];
+
+/**
  * Maps country names (in Ukrainian or English) to their respective 2-letter ISO codes.
  */
 export const getCountryIsoCode = (country: string): string | null => {
@@ -145,7 +178,7 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("марокко") || lower.includes("morocc") || lower.includes("марок")) return "ma";
   if (lower.includes("алжир") || lower.includes("algeri")) return "dz";
   if (lower.includes("туніс") || lower.includes("tunisi")) return "tn";
-  if (lower.includes("лівій") || lower.includes("libya")) return "ly";
+  if (lower.startsWith("лівія") || lower.includes("лівій") || lower.includes("libya")) return "ly";
   if (lower.includes("судан") || lower.includes("sudan")) return "sd";
 
   // ── Sub-Saharan Africa ────────────────────────────────────────────────────
@@ -253,6 +286,7 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("гернсі") || lower.includes("guernsey")) return "gg";
   if (lower.includes("гібралт") || lower.includes("gibralt")) return "gi";
   if (lower.includes("гонконг") || lower.includes("hong kong") || lower.includes("гонґконг")) return "hk";
+  if (lower.includes("макао") || lower.includes("macau") || lower.includes("macao")) return "mo";
   if (lower.includes("бермуд") || lower.includes("bermud")) return "bm";
   if (lower.includes("фолкленд") || lower.includes("falkland") || lower.includes("мальвін")) return "fk";
   if (lower.includes("кайман") || lower.includes("cayman")) return "ky";
@@ -414,7 +448,7 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("марокко") || lower.includes("morocc") || lower.includes("марок")) return "🇲🇦";
   if (lower.includes("алжир") || lower.includes("algeri")) return "🇩🇿";
   if (lower.includes("туніс") || lower.includes("tunisi")) return "🇹🇳";
-  if (lower.includes("лівій") || lower.includes("libya")) return "🇱🇾";
+  if (lower.startsWith("лівія") || lower.includes("лівій") || lower.includes("libya")) return "🇱🇾";
   if (lower.includes("судан") || lower.includes("sudan")) return "🇸🇩";
 
   // ── Sub-Saharan Africa ────────────────────────────────────────────────────
@@ -522,6 +556,7 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("гернсі") || lower.includes("guernsey")) return "🇬🇬";
   if (lower.includes("гібралт") || lower.includes("gibralt")) return "🇬🇮";
   if (lower.includes("гонконг") || lower.includes("hong kong") || lower.includes("гонґконг")) return "🇭🇰";
+  if (lower.includes("макао") || lower.includes("macau") || lower.includes("macao")) return "🇲🇴";
   if (lower.includes("бермуд") || lower.includes("bermud")) return "🇧🇲";
   if (lower.includes("фолкленд") || lower.includes("falkland") || lower.includes("мальвін")) return "🇫🇰";
   if (lower.includes("кайман") || lower.includes("cayman")) return "🇰🇾";

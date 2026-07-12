@@ -7,7 +7,7 @@
 import React, { useState } from "react";
 import { Coin } from "../types";
 import { BarChart3, Download, Trophy, Globe, Coins, Calendar, TrendingUp, History, Tag, ShieldCheck, Award } from "lucide-react";
-import { getCountryFlag } from "../utils/countryUtils";
+import { getCountryFlag, getCountryIsoCode, CONTINENTS } from "../utils/countryUtils";
 import CountryFlag from "./CountryFlag";
 import WorldMap from "./WorldMap";
 import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } from "../utils/categoryUtils";
@@ -19,6 +19,7 @@ interface CollectionAnalyticsProps {
 
 export default function CollectionAnalytics({ coins, onFilterByCountry }: CollectionAnalyticsProps) {
   const [timelineTab, setTimelineTab] = useState<"days" | "months" | "years">("days");
+  const [growthIdx, setGrowthIdx] = useState<number | null>(null);
 
   // 1. Portfolio valuations estimation
   const calculateTotalValuation = () => {
@@ -148,60 +149,166 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
 
   const countries = getCountryStats();
 
-  // 5. Timeline Stats by Days, Months, Years
-  const getTimelineData = () => {
-    const daily: { [key: string]: number } = {};
-    const monthly: { [key: string]: number } = {};
-    const yearly: { [key: string]: number } = {};
-
-    coins.forEach((coin) => {
-      // Prioritize createdAt timestamp, fallback to recognizedAt or a default value
-      const rawDateStr = coin.createdAt || coin.recognizedAt;
-      let dateObj = new Date();
-      if (rawDateStr) {
-        const parsed = Date.parse(rawDateStr);
-        if (!isNaN(parsed)) {
-          dateObj = new Date(parsed);
-        }
-      }
-
-      // Formatting Day
-      const dayKey = dateObj.toLocaleDateString("uk-UA", {
-        day: "numeric",
-        month: "short",
-      });
-
-      // Formatting Month
-      const monthKey = dateObj.toLocaleDateString("uk-UA", {
-        month: "long",
-        year: "numeric",
-      });
-
-      // Formatting Year
-      const yearKey = dateObj.getFullYear().toString();
-
-      daily[dayKey] = (daily[dayKey] || 0) + 1;
-      monthly[monthKey] = (monthly[monthKey] || 0) + 1;
-      yearly[yearKey] = (yearly[yearKey] || 0) + 1;
+  // 4b. Continent completion — % of each continent's countries present in the collection
+  const getContinentStats = () => {
+    const collectedIsoCodes = new Set<string>();
+    coins.forEach((c) => {
+      const code = getCountryIsoCode(c.country || "");
+      if (code) collectedIsoCodes.add(code);
     });
 
-    const formatRegistry = (registry: { [key: string]: number }) => {
-      return Object.entries(registry).map(([label, count]) => ({
-        label,
-        count,
-      }));
+    return CONTINENTS.map((continent) => {
+      const collected = continent.codes.filter((code) => collectedIsoCodes.has(code)).length;
+      return {
+        name: continent.name,
+        collected,
+        total: continent.codes.length,
+        percentage: (collected / continent.codes.length) * 100,
+      };
+    }).sort((a, b) => b.percentage - a.percentage);
+  };
+
+  const continentStats = getContinentStats();
+
+  // 5. Timeline stats — chronological, gap-filled (last 14 days / 12 months / up to 6 years)
+  const getTimelineData = () => {
+    const dayCounts = new Map<number, number>();
+    let datelessCount = 0;
+    let earliestDay = Infinity;
+
+    coins.forEach((coin) => {
+      const raw = coin.createdAt || coin.recognizedAt;
+      const parsed = raw ? Date.parse(raw) : NaN;
+      if (isNaN(parsed)) {
+        datelessCount++;
+        return;
+      }
+      const d = new Date(parsed);
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      dayCounts.set(dayStart, (dayCounts.get(dayStart) || 0) + 1);
+      if (dayStart < earliestDay) earliestDay = dayStart;
+    });
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Continuous periods → items with count and running collection size
+    const buildSeries = (periods: { start: Date; end: Date; label: string }[]) => {
+      const counts = periods.map((p) => {
+        let c = 0;
+        dayCounts.forEach((n, day) => {
+          if (day >= p.start.getTime() && day < p.end.getTime()) c += n;
+        });
+        return c;
+      });
+      const inWindow = counts.reduce((s, c) => s + c, 0);
+      let cumulative = coins.length - inWindow;
+      return periods.map((p, i) => {
+        cumulative += counts[i];
+        return { label: p.label, count: counts[i], cumulative };
+      });
     };
 
+    const dayPeriods = Array.from({ length: 14 }, (_, i) => {
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 13 + i);
+      const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 12 + i);
+      return { start, end, label: start.toLocaleDateString("uk-UA", { day: "numeric", month: "short" }) };
+    });
+
+    const monthPeriods = Array.from({ length: 12 }, (_, i) => {
+      const start = new Date(today.getFullYear(), today.getMonth() - 11 + i, 1);
+      const end = new Date(today.getFullYear(), today.getMonth() - 10 + i, 1);
+      const shortMonth = start.toLocaleDateString("uk-UA", { month: "short" }).replace(".", "");
+      return { start, end, label: `${shortMonth} ’${String(start.getFullYear()).slice(-2)}` };
+    });
+
+    const currentYear = today.getFullYear();
+    const firstYear = earliestDay === Infinity ? currentYear : new Date(earliestDay).getFullYear();
+    const startYear = Math.max(firstYear, currentYear - 5);
+    const yearPeriods = Array.from({ length: currentYear - startYear + 1 }, (_, i) => ({
+      start: new Date(startYear + i, 0, 1),
+      end: new Date(startYear + i + 1, 0, 1),
+      label: String(startYear + i),
+    }));
+
+    // Daily cumulative series across the whole collecting history
+    const growth: { time: number; total: number; added: number }[] = [];
+    if (earliestDay !== Infinity) {
+      let running = datelessCount;
+      const cursor = new Date(earliestDay);
+      while (cursor.getTime() <= today.getTime()) {
+        const t = cursor.getTime();
+        const added = dayCounts.get(t) || 0;
+        running += added;
+        growth.push({ time: t, total: running, added });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+
+    // Fun facts: record day, average pace, streaks (DST-safe day-step via Date arithmetic)
+    const prevDayTime = (t: number) => {
+      const d = new Date(t);
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1).getTime();
+    };
+    let record: { time: number; count: number } | null = null;
+    dayCounts.forEach((c, t) => {
+      if (!record || c > record.count) record = { time: t, count: c };
+    });
+    let bestStreak = 0;
+    let run = 0;
+    [...dayCounts.keys()].sort((a, b) => a - b).forEach((t) => {
+      run = dayCounts.has(prevDayTime(t)) ? run + 1 : 1;
+      if (run > bestStreak) bestStreak = run;
+    });
+    let currentStreak = 0;
+    let cursor = dayCounts.has(today.getTime()) ? today.getTime() : prevDayTime(today.getTime());
+    while (dayCounts.has(cursor)) {
+      currentStreak++;
+      cursor = prevDayTime(cursor);
+    }
+    const daysSpan = earliestDay === Infinity ? 1 : growth.length;
+    const avgPerDay = coins.length / daysSpan;
+
     return {
-      days: formatRegistry(daily).slice(-7), // Last 7 days with additions
-      months: formatRegistry(monthly).slice(-6), // Last 6 months with additions
-      years: formatRegistry(yearly).slice(-5), // Last 5 years with additions
+      days: buildSeries(dayPeriods),
+      months: buildSeries(monthPeriods),
+      years: buildSeries(yearPeriods),
+      growth,
+      stats: { record, bestStreak, currentStreak, avgPerDay, firstTime: earliestDay === Infinity ? null : earliestDay },
     };
   };
 
   const timelineData = getTimelineData();
   const activeTimeline = timelineData[timelineTab];
+  const activeWindowTotal = activeTimeline.reduce((sum, item) => sum + item.count, 0);
+  const activeWindowLabel =
+    timelineTab === "days"
+      ? "останні 14 днів"
+      : timelineTab === "months"
+        ? "останні 12 місяців"
+        : activeTimeline.length > 1
+          ? `${activeTimeline[0].label}–${activeTimeline[activeTimeline.length - 1].label}`
+          : `${activeTimeline[0]?.label ?? ""} рік`;
   const maxTimelineCount = activeTimeline.reduce((max, item) => (item.count > max ? item.count : max), 1);
+
+  // Growth area chart geometry (viewBox units; stroke kept crisp via vector-effect)
+  const growth = timelineData.growth;
+  const growthMax = growth.length > 0 ? growth[growth.length - 1].total : 0;
+  const GROWTH_W = 600;
+  const GROWTH_H = 140;
+  const growthPts = growth.map((g, i) => ({
+    x: growth.length > 1 ? (i / (growth.length - 1)) * GROWTH_W : 0,
+    y: GROWTH_H - (growthMax > 0 ? (g.total / growthMax) * (GROWTH_H - 12) : 0),
+  }));
+  const growthLine = growthPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const growthArea = growth.length > 1 ? `${growthLine} L${GROWTH_W},${GROWTH_H} L0,${GROWTH_H} Z` : "";
+
+  const handleGrowthMove = (clientX: number, el: HTMLElement) => {
+    if (growth.length < 2) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    setGrowthIdx(Math.round(ratio * (growth.length - 1)));
+  };
 
   // 6. Category stats
   const getCategoryStats = () => {
@@ -373,6 +480,32 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
               coins={coins}
               onCountryClick={onFilterByCountry ? (code) => onFilterByCountry(`iso:${code}`) : undefined}
             />
+
+            {/* Continent completion */}
+            <div className="pt-3 border-t border-white/5 space-y-2.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Заповнення по континентах</span>
+                <span className="text-[10px] font-mono text-white/25">країн у колекції / всього країн</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+                {continentStats.map((ct) => (
+                  <div key={ct.name} className="space-y-1">
+                    <div className="flex justify-between items-baseline text-xs gap-2">
+                      <span className="text-white/80 font-sans truncate">{ct.name}</span>
+                      <span className="text-white/50 font-mono text-[11px] shrink-0">
+                        {ct.collected} / {ct.total} · <span className="text-[#D4AF37] font-bold">{Math.round(ct.percentage)}%</span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        style={{ width: `${ct.percentage}%` }}
+                        className="h-full bg-gradient-to-r from-[#D4AF37] to-[#F2D06B] rounded-full"
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Real-time stats widgets */}
@@ -575,36 +708,150 @@ export default function CollectionAnalytics({ coins, onFilterByCountry }: Collec
                   </div>
                 </div>
 
-                {/* SVG Rendered Premium Interactive Bar-Line Charts */}
-                <div className="pt-2">
-                  {activeTimeline.length === 0 ? (
-                    <p className="text-xs text-white/30 italic py-8 text-center">Записів за вказаний період поки немає</p>
+                {/* Fun-fact chips */}
+                {timelineData.stats.firstTime !== null && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                      <span className="text-[9px] uppercase font-mono tracking-wider text-white/35 block">🏆 Рекордний день</span>
+                      <span className="text-lg font-serif font-bold text-[#D4AF37] block mt-0.5">
+                        +{timelineData.stats.record?.count ?? 0} шт
+                      </span>
+                      <span className="text-[10px] text-white/40 block">
+                        {timelineData.stats.record
+                          ? new Date(timelineData.stats.record.time).toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" })
+                          : "—"}
+                      </span>
+                    </div>
+                    <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                      <span className="text-[9px] uppercase font-mono tracking-wider text-white/35 block">⚡ Середній темп</span>
+                      <span className="text-lg font-serif font-bold text-white block mt-0.5">
+                        {timelineData.stats.avgPerDay.toFixed(1)} шт/день
+                      </span>
+                      <span className="text-[10px] text-white/40 block">
+                        з {new Date(timelineData.stats.firstTime).toLocaleDateString("uk-UA", { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    </div>
+                    <div className="bg-black/30 border border-white/5 rounded-xl p-3">
+                      <span className="text-[9px] uppercase font-mono tracking-wider text-white/35 block">🔥 Серія днів поспіль</span>
+                      <span className="text-lg font-serif font-bold text-emerald-400 block mt-0.5">
+                        {timelineData.stats.currentStreak > 0 ? `${timelineData.stats.currentStreak} дн.` : "—"}
+                      </span>
+                      <span className="text-[10px] text-white/40 block">
+                        {timelineData.stats.currentStreak > 0 ? `зараз триває · рекорд ${timelineData.stats.bestStreak} дн.` : `рекорд — ${timelineData.stats.bestStreak} дн. поспіль`}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Additions bar chart */}
+                <div className="pt-1">
+                  <div className="flex items-baseline justify-between text-[10px] font-mono mb-1">
+                    <span className="text-white/35 uppercase tracking-wider">Додано за {activeWindowLabel}</span>
+                    <span className={activeWindowTotal > 0 ? "text-emerald-400 font-bold" : "text-white/30"}>
+                      {activeWindowTotal > 0 ? `+${activeWindowTotal} шт` : "нічого"}
+                    </span>
+                  </div>
+                  {activeWindowTotal === 0 ? (
+                    <p className="text-xs text-white/30 italic py-8 text-center">За {activeWindowLabel} монет не додавалося</p>
                   ) : (
-                    <div className="space-y-6">
-                      <div className="h-48 flex items-end justify-between gap-2.5 sm:gap-4 px-2 pt-6">
-                        {activeTimeline.map((item, index) => {
-                          const heightPct = Math.round((item.count / maxTimelineCount) * 100);
-                          return (
-                            <div key={index} className="flex-1 flex flex-col items-center h-full justify-end group">
-                              <span className="text-[10px] font-mono font-semibold text-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mb-1 select-none">
-                                {item.count} шт
-                              </span>
-                              <div className="w-full bg-white/5 border border-white/5 hover:border-[#D4AF37]/20 rounded-t-lg transition-all duration-300 relative overflow-hidden flex items-end min-h-[4px]" style={{ height: `${heightPct}%` }}>
+                    <div className="h-44 flex items-end justify-between gap-1.5 sm:gap-2.5 px-1 pt-6">
+                      {activeTimeline.map((item, index) => {
+                        const heightPct = Math.round((item.count / maxTimelineCount) * 100);
+                        return (
+                          <div
+                            key={index}
+                            className="flex-1 flex flex-col items-center h-full justify-end group min-w-0"
+                            title={`${item.label}: +${item.count} шт · у колекції ${item.cumulative}`}
+                          >
+                            <span className="text-[10px] font-mono font-semibold text-[#D4AF37] opacity-0 group-hover:opacity-100 transition-opacity mb-1 select-none whitespace-nowrap">
+                              +{item.count}
+                            </span>
+                            <div
+                              className={`w-full rounded-t-lg transition-all duration-300 relative overflow-hidden flex items-end min-h-[3px] ${
+                                item.count > 0
+                                  ? "bg-white/5 border border-white/5 hover:border-[#D4AF37]/20"
+                                  : "bg-white/[0.03]"
+                              }`}
+                              style={{ height: item.count > 0 ? `${Math.max(heightPct, 4)}%` : undefined }}
+                            >
+                              {item.count > 0 && (
                                 <div className="absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-[#D4AF37]/20 to-[#D4AF37]/50 group-hover:from-emerald-400/20 group-hover:to-emerald-400/40 transition-colors duration-300"></div>
-                              </div>
-                              <span className="text-[9px] font-mono text-white/40 mt-2 truncate w-full text-center group-hover:text-white transition-colors">
-                                {item.label}
-                              </span>
+                              )}
                             </div>
-                          );
-                        })}
-                      </div>
-                      <div className="text-[10px] text-white/35 font-mono text-center leading-relaxed">
-                        • Візуалізація показує інтенсивність розширення вашого альбому
-                      </div>
+                            <span className="text-[8px] sm:text-[9px] font-mono text-white/40 mt-2 truncate w-full text-center group-hover:text-white transition-colors">
+                              {item.label}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
+
+                {/* Cumulative growth area chart */}
+                {growth.length > 1 && (
+                  <div className="pt-4 border-t border-white/5 space-y-2">
+                    <div className="flex items-baseline justify-between text-[10px] font-mono">
+                      <span className="text-white/35 uppercase tracking-wider">Зростання колекції</span>
+                      <span className="text-white/40">
+                        {growth.length} днів · <span className="text-[#D4AF37] font-bold">{growthMax} шт</span>
+                      </span>
+                    </div>
+                    <div
+                      className="relative cursor-crosshair select-none"
+                      onMouseMove={(e) => handleGrowthMove(e.clientX, e.currentTarget)}
+                      onMouseLeave={() => setGrowthIdx(null)}
+                      onTouchStart={(e) => handleGrowthMove(e.touches[0].clientX, e.currentTarget)}
+                      onTouchMove={(e) => handleGrowthMove(e.touches[0].clientX, e.currentTarget)}
+                      onTouchEnd={() => setGrowthIdx(null)}
+                    >
+                      <svg viewBox={`0 0 ${GROWTH_W} ${GROWTH_H}`} preserveAspectRatio="none" className="w-full h-36 block">
+                        <defs>
+                          <linearGradient id="growthGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#D4AF37" stopOpacity="0.35" />
+                            <stop offset="100%" stopColor="#D4AF37" stopOpacity="0.02" />
+                          </linearGradient>
+                        </defs>
+                        <path d={growthArea} fill="url(#growthGradient)" />
+                        <path d={growthLine} fill="none" stroke="#D4AF37" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                      </svg>
+                      {growthIdx !== null && growth[growthIdx] && (
+                        <>
+                          <div
+                            className="absolute inset-y-0 w-px bg-white/20 pointer-events-none"
+                            style={{ left: `${(growthPts[growthIdx].x / GROWTH_W) * 100}%` }}
+                          />
+                          <div
+                            className="absolute w-2.5 h-2.5 rounded-full bg-[#D4AF37] border-2 border-[#121214] pointer-events-none -translate-x-1/2 -translate-y-1/2"
+                            style={{
+                              left: `${(growthPts[growthIdx].x / GROWTH_W) * 100}%`,
+                              top: `${(growthPts[growthIdx].y / GROWTH_H) * 100}%`,
+                            }}
+                          />
+                          <div
+                            className="absolute top-1 -translate-x-1/2 pointer-events-none z-10"
+                            style={{ left: `${Math.min(86, Math.max(14, (growthPts[growthIdx].x / GROWTH_W) * 100))}%` }}
+                          >
+                            <div className="bg-[#1B1B1F] border border-white/10 rounded-lg px-2.5 py-1.5 text-center shadow-xl whitespace-nowrap">
+                              <div className="text-[10px] text-white/50 font-mono">
+                                {new Date(growth[growthIdx].time).toLocaleDateString("uk-UA", { day: "numeric", month: "short", year: "numeric" })}
+                              </div>
+                              <div className="text-xs font-bold text-[#D4AF37]">{growth[growthIdx].total} шт</div>
+                              {growth[growthIdx].added > 0 && (
+                                <div className="text-[10px] text-emerald-400 font-mono">+{growth[growthIdx].added} за день</div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div className="flex justify-between text-[9px] font-mono text-white/30 px-0.5">
+                      <span>{new Date(growth[0].time).toLocaleDateString("uk-UA", { day: "numeric", month: "short" })}</span>
+                      <span>{new Date(growth[Math.floor((growth.length - 1) / 2)].time).toLocaleDateString("uk-UA", { day: "numeric", month: "short" })}</span>
+                      <span>{new Date(growth[growth.length - 1].time).toLocaleDateString("uk-UA", { day: "numeric", month: "short" })}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Geographic Flag block */}
