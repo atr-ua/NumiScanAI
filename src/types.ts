@@ -28,6 +28,7 @@ export interface Coin {
   vis_id?: number;   // display order (1..N); 0 = unsorted
   hasObverse?: number; // 0 or 1, computed server-side
   hasReverse?: number; // 0 or 1, computed server-side
+  recognizedBy?: string; // AI model id that produced the recognition data
   recognizedAt: string;
   createdAt?: string;
   updatedAt?: string;

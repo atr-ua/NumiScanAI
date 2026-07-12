@@ -12,6 +12,8 @@ All notable changes to this project are documented here.
 - **Cumulative growth chart** — gold SVG area chart of collection size over the entire collecting history (daily granularity); interactive crosshair with tooltip (date, total, added that day) on mouse hover and touch
 - **Period total** — the additions bar chart header now shows the window sum (e.g. "Додано за останні 14 днів: +207 шт"); per-bar tooltip includes the running collection size
 - **Macau mapping** — "Макао"/"Macau" now resolves to `mo` / 🇲🇴
+- **AI data verification in coin card** — new panel in the detail card runs a fresh recognition of the stored photos with a user-selected model (defaults to a *different* model than the one that recognized the coin — independent second opinion, no anchoring) and programmatically diffs 12 structured fields (title, denomination, country, year, metal, weight, diameter, thickness, edge, mintage, rarity, grade); discrepancies are listed as `current → proposed` with checkboxes, "Apply selected" fills the edit form — final save stays with the user; full match shows a green confirmation
+- **`recognizedBy` column** — every newly recognized coin stores the AI model id that produced its data (shown in the verification panel); editing an old card never wipes the value (UPSERT keeps existing on empty)
 
 ### Fixed
 - **Days tab showed oldest additions** — daily registry keys were built in coin iteration order (API returns newest first), so `.slice(-7)` picked the *oldest* seven days; timeline now aggregates by real local dates, sorts chronologically, and fills gaps with zero-days (last 14 days / 12 months / up to 6 years)
@@ -27,6 +29,8 @@ All notable changes to this project are documented here.
 - **Графік зростання колекції** — золота SVG area-діаграма розміру колекції за всю історію збирання (по днях); інтерактивне перехрестя з тултіпом (дата, всього, додано за день) при наведенні миші та дотику
 - **Сума за період** — заголовок бар-чарту показує підсумок вікна (напр. «Додано за останні 14 днів: +207 шт»); підказка стовпчика містить розмір колекції на той момент
 - **Маппінг Макао** — «Макао»/"Macau" тепер резолвиться до `mo` / 🇲🇴
+- **AI-перевірка даних у картці монети** — нова панель у картці запускає свіже розпізнавання збережених фото обраною моделлю (за замовчуванням — *іншою*, ніж та, що розпізнавала: незалежна друга думка без ефекту якоря) і програмно порівнює 12 структурованих полів (назва, номінал, країна, рік, метал, вага, діаметр, товщина, гурт, тираж, рідкість, грейд); розбіжності показуються як `поточне → запропоноване` з чекбоксами, «Застосувати вибрані» підставляє значення у форму редагування — фінальне збереження за користувачем; повний збіг — зелене підтвердження
+- **Колонка `recognizedBy`** — кожна нова монета зберігає ID моделі, що розпізнала її дані (видно в панелі перевірки); редагування старої картки не затирає значення (UPSERT зберігає наявне при порожньому)
 
 ### Виправлено
 - **Вкладка «По днях» показувала найстаріші додавання** — ключі днів створювалися в порядку ітерації монет (API віддає найновіші першими), тому `.slice(-7)` брав *найстаріші* сім днів; тепер агрегація за реальними локальними датами, хронологічне сортування та заповнення порожніх днів нулями (останні 14 днів / 12 місяців / до 6 років)

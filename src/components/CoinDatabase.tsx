@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Coin } from "../types";
-import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload, ChevronLeft, ChevronRight, ArrowLeftRight } from "lucide-react";
+import { Search, Trash2, Edit2, Calendar, Scale, Coins, ShieldCheck, MapPin, Database, Award, Info, Save, X, Upload, ChevronLeft, ChevronRight, ArrowLeftRight, Loader2, Sparkles } from "lucide-react";
 import CountryFlag from "./CountryFlag";
 import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } from "../utils/categoryUtils";
 import { fixTitleWithYear } from "../utils/coinUtils";
@@ -106,6 +106,16 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     fromCatalog?: boolean;
   } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // AI verification of stored coin data against its photos
+  const [verifyModel, setVerifyModel] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifyDiffs, setVerifyDiffs] = useState<
+    { key: keyof Coin; label: string; current: string; proposed: string; apply: boolean }[] | null
+  >(null);
+  const [verifyMatched, setVerifyMatched] = useState(0);
+  const [verifyModelUsed, setVerifyModelUsed] = useState("");
 
   // Buffer state to edit details
   const [editForm, setEditForm] = useState<Partial<Coin>>({});
@@ -271,6 +281,105 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     return () => window.removeEventListener("keydown", handleEsc);
   }, [selectedCoin]);
 
+  // Fields the AI verification compares (structured data only — free text excluded)
+  const VERIFY_FIELDS: { key: keyof Coin; label: string }[] = [
+    { key: "title", label: "Назва" },
+    { key: "denomination", label: "Номінал" },
+    { key: "country", label: "Країна" },
+    { key: "year", label: "Рік" },
+    { key: "metal", label: "Метал" },
+    { key: "weight", label: "Вага" },
+    { key: "diameter", label: "Діаметр" },
+    { key: "thickness", label: "Товщина" },
+    { key: "edge", label: "Гурт" },
+    { key: "mintage", label: "Тираж" },
+    { key: "rarity", label: "Рідкість" },
+    { key: "grade", label: "Стан (Grade)" },
+  ];
+
+  const getVerifyModelOptions = (): string[] => {
+    let pinned: string[] = [];
+    try { pinned = JSON.parse(localStorage.getItem("pinnedModels") || "[]") || []; } catch {}
+    const selected = localStorage.getItem("selectedModel") || "";
+    const opts = [...new Set([...pinned, selected].filter(Boolean))];
+    return opts.length ? opts : ["gemini-3.5-flash"];
+  };
+
+  // Prefer a DIFFERENT model than the one that produced the data — independent second opinion
+  const pickDefaultVerifyModel = (coin: Coin): string => {
+    const opts = getVerifyModelOptions();
+    return opts.find((m) => m !== coin.recognizedBy) || opts[0];
+  };
+
+  const normalizeFieldValue = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  const handleVerifyCoin = async () => {
+    if (!selectedCoin) return;
+    setIsVerifying(true);
+    setVerifyError(null);
+    setVerifyDiffs(null);
+    try {
+      // Images load lazily — fetch the full coin if they are not here yet
+      let obverse = selectedCoin.imageObverse || selectedCoin.image;
+      let reverse = selectedCoin.imageReverse;
+      if (!obverse) {
+        const full = await fetch(`/api/coins/${selectedCoin.id}`).then((r) => (r.ok ? r.json() : null));
+        if (full) {
+          obverse = full.imageObverse || full.image;
+          reverse = full.imageReverse;
+        }
+      }
+      if (!obverse) throw new Error("У монети немає збережених фото для перевірки");
+
+      const res = await fetch("/api/recognize-coin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: obverse,
+          imageReverse: reverse || undefined,
+          model: verifyModel,
+          lmStudioUrl: localStorage.getItem("lmStudioUrl") || "",
+          lmStudioToken: localStorage.getItem("lmStudioToken") || "",
+          ollamaUrl: localStorage.getItem("ollamaUrl") || "",
+        }),
+      });
+      if (!res.ok) {
+        const errObj = await res.json().catch(() => ({} as any));
+        throw new Error(errObj.error || "Не вдалося виконати перевірку");
+      }
+      const ai = await res.json();
+
+      const diffs = VERIFY_FIELDS.flatMap(({ key, label }) => {
+        const proposed = String(ai[key] ?? "").trim();
+        if (!proposed) return []; // AI has no opinion — not a discrepancy
+        const current = String(selectedCoin[key] ?? "").trim();
+        if (normalizeFieldValue(current) === normalizeFieldValue(proposed)) return [];
+        return [{ key, label, current, proposed, apply: false }];
+      });
+      const compared = VERIFY_FIELDS.filter(({ key }) => String(ai[key] ?? "").trim()).length;
+      setVerifyMatched(compared - diffs.length);
+      setVerifyModelUsed(verifyModel);
+      setVerifyDiffs(diffs);
+    } catch (err: any) {
+      setVerifyError(err?.message || "Помилка перевірки");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleApplyVerified = () => {
+    if (!selectedCoin || !verifyDiffs) return;
+    const chosen = verifyDiffs.filter((d) => d.apply);
+    if (!chosen.length) return;
+    userStartedEditingRef.current = true;
+    setEditForm((prev) => ({
+      ...(Object.keys(prev).length ? prev : selectedCoin),
+      ...Object.fromEntries(chosen.map((d) => [d.key, d.proposed])),
+    }));
+    setIsEditing(true);
+    setVerifyDiffs(null);
+  };
+
   const handleOpenDetail = async (coin: Coin) => {
     detailAbortRef.current?.abort();
     const controller = new AbortController();
@@ -281,6 +390,10 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     setIsEditing(false);
     setShowConfirmDelete(false);
     setSaveError(null);
+    setVerifyDiffs(null);
+    setVerifyError(null);
+    setIsVerifying(false);
+    setVerifyModel(pickDefaultVerifyModel(coin));
     try {
       const res = await fetch(`/api/coins/${coin.id}`, { signal: controller.signal });
       if (res.ok) {
@@ -1112,6 +1225,106 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                     onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
                     className="border border-white/10 disabled:border-transparent bg-black/40 disabled:bg-black/10 text-white text-xs p-2 rounded-xl focus:border-[#D4AF37] focus:outline-none w-full"
                   />
+                </div>
+              )}
+
+              {/* AI verification panel */}
+              {!isEditing && (
+                <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
+                    <div className="min-w-0">
+                      <span className="text-xs font-semibold text-white/70 font-sans flex items-center gap-1.5">
+                        <Sparkles className="h-4 w-4 text-[#D4AF37]" /> AI-перевірка даних
+                      </span>
+                      <span className="text-[10px] text-white/30 font-mono block mt-0.5">
+                        {selectedCoin.recognizedBy
+                          ? `розпізнано моделлю: ${selectedCoin.recognizedBy}`
+                          : "модель розпізнавання невідома (стара картка)"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={verifyModel}
+                        onChange={(e) => setVerifyModel(e.target.value)}
+                        disabled={isVerifying}
+                        className="bg-black/45 border border-white/10 text-white/80 text-[11px] font-mono rounded-lg px-2 py-1.5 focus:border-[#D4AF37] focus:outline-none max-w-[180px] cursor-pointer"
+                      >
+                        {getVerifyModelOptions().map((m) => (
+                          <option key={m} value={m} className="bg-[#121214]">
+                            {m}{m === selectedCoin.recognizedBy ? " (та сама)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleVerifyCoin}
+                        disabled={isVerifying}
+                        className="bg-white/5 hover:bg-white/10 border border-[#D4AF37]/30 text-[#D4AF37] px-3 py-1.5 text-[11px] font-semibold rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                      >
+                        {isVerifying ? (
+                          <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Перевіряю…</>
+                        ) : (
+                          <><ShieldCheck className="h-3.5 w-3.5" /> Перевірити</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {verifyError && (
+                    <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1.5 rounded-lg">{verifyError}</p>
+                  )}
+
+                  {verifyDiffs !== null && verifyDiffs.length === 0 && (
+                    <p className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1.5 rounded-lg">
+                      ✓ Модель {verifyModelUsed} підтверджує дані картки — усі {verifyMatched} перевірених полів збігаються
+                    </p>
+                  )}
+
+                  {verifyDiffs !== null && verifyDiffs.length > 0 && (
+                    <div className="space-y-2 animate-fade-in">
+                      <p className="text-[11px] text-white/50">
+                        Модель <span className="font-mono text-white/70">{verifyModelUsed}</span> не згодна з {verifyDiffs.length}{" "}
+                        {verifyDiffs.length === 1 ? "полем" : "полями"} (збігається: {verifyMatched}). Позначте, що застосувати:
+                      </p>
+                      <div className="space-y-1">
+                        {verifyDiffs.map((d, i) => (
+                          <label
+                            key={d.key}
+                            className="flex items-start gap-2.5 bg-black/40 border border-white/5 hover:border-[#D4AF37]/20 rounded-lg px-2.5 py-2 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={d.apply}
+                              onChange={(e) =>
+                                setVerifyDiffs((prev) =>
+                                  prev ? prev.map((x, j) => (j === i ? { ...x, apply: e.target.checked } : x)) : prev
+                                )
+                              }
+                              className="mt-0.5 accent-[#D4AF37] shrink-0 cursor-pointer"
+                            />
+                            <div className="min-w-0 text-[11px] leading-snug">
+                              <span className="text-white/45 font-semibold">{d.label}:</span>{" "}
+                              {d.current ? (
+                                <span className="text-white/50 line-through decoration-red-400/50">{d.current}</span>
+                              ) : (
+                                <span className="text-white/25 italic">порожньо</span>
+                              )}
+                              <span className="text-white/30"> → </span>
+                              <span className="text-[#D4AF37] font-semibold">{d.proposed}</span>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyVerified}
+                        disabled={!verifyDiffs.some((d) => d.apply)}
+                        className="bg-[#D4AF37] hover:bg-[#c4a030] text-[#0A0A0B] font-bold px-4 py-1.5 text-[11px] rounded-lg transition-all disabled:opacity-40 disabled:cursor-default cursor-pointer"
+                      >
+                        Застосувати вибрані ({verifyDiffs.filter((d) => d.apply).length}) → у редагування
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

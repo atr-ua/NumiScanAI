@@ -58,6 +58,7 @@ export const initDb = async (): Promise<void> => {
       notes            TEXT    DEFAULT '',
       category         INTEGER,
       vis_id           INTEGER DEFAULT 0,
+      recognizedBy     TEXT    DEFAULT '',
       recognizedAt     TEXT    DEFAULT '',
       createdAt        TEXT    DEFAULT '',
       updatedAt        TEXT    DEFAULT ''
@@ -69,6 +70,7 @@ export const initDb = async (): Promise<void> => {
   try { await run(`ALTER TABLE coins ADD COLUMN mintage TEXT DEFAULT ''`); } catch (_) {}
   try { await run(`ALTER TABLE coins ADD COLUMN thickness TEXT DEFAULT ''`); } catch (_) {}
   try { await run(`ALTER TABLE coins ADD COLUMN edge TEXT DEFAULT ''`); } catch (_) {}
+  try { await run(`ALTER TABLE coins ADD COLUMN recognizedBy TEXT DEFAULT ''`); } catch (_) {}
 
   // Migrate from legacy JSON on first run
   const { n } = (await get<{ n: number }>("SELECT COUNT(*) as n FROM coins"))!;
@@ -108,6 +110,7 @@ const toRow = (c: any) => ({
   historicalContext: c.historicalContext ?? "",
   notes:            c.notes ?? "",
   category:         c.category ?? null,
+  recognizedBy:     c.recognizedBy ?? "",
   recognizedAt:     c.recognizedAt ?? new Date().toISOString(),
   createdAt:        c.createdAt ?? c.recognizedAt ?? new Date().toISOString(),
   updatedAt:        c.updatedAt ?? new Date().toISOString(),
@@ -117,11 +120,11 @@ const UPSERT = `
   INSERT INTO coins (
     id, image, imageObverse, imageReverse, title, denomination, country, year,
     metal, weight, diameter, estimatedValue, mintage, thickness, edge, rarity, grade, historicalContext,
-    notes, category, recognizedAt, createdAt, updatedAt
+    notes, category, recognizedBy, recognizedAt, createdAt, updatedAt
   ) VALUES (
     $id, $image, $imageObverse, $imageReverse, $title, $denomination, $country, $year,
     $metal, $weight, $diameter, $estimatedValue, $mintage, $thickness, $edge, $rarity, $grade, $historicalContext,
-    $notes, $category, $recognizedAt, $createdAt, $updatedAt
+    $notes, $category, $recognizedBy, $recognizedAt, $createdAt, $updatedAt
   )
   ON CONFLICT(id) DO UPDATE SET
     image=excluded.image, imageObverse=excluded.imageObverse,
@@ -132,7 +135,8 @@ const UPSERT = `
     mintage=excluded.mintage, thickness=excluded.thickness, edge=excluded.edge,
     rarity=excluded.rarity, grade=excluded.grade,
     historicalContext=excluded.historicalContext, notes=excluded.notes,
-    category=excluded.category, updatedAt=excluded.updatedAt
+    category=excluded.category, updatedAt=excluded.updatedAt,
+    recognizedBy=CASE WHEN excluded.recognizedBy != '' THEN excluded.recognizedBy ELSE coins.recognizedBy END
 `;
 
 const coinInsertOrReplace = async (c: any): Promise<void> => {
@@ -141,7 +145,7 @@ const coinInsertOrReplace = async (c: any): Promise<void> => {
     r.id, r.image, r.imageObverse, r.imageReverse, r.title, r.denomination,
     r.country, r.year, r.metal, r.weight, r.diameter, r.estimatedValue, r.mintage, r.thickness, r.edge,
     r.rarity, r.grade, r.historicalContext, r.notes, r.category,
-    r.recognizedAt, r.createdAt, r.updatedAt,
+    r.recognizedBy, r.recognizedAt, r.createdAt, r.updatedAt,
   ]);
 };
 
@@ -152,7 +156,7 @@ export const dbGetCoins = (): Promise<any[]> =>
   all(`
     SELECT id, title, denomination, country, year,
            metal, weight, diameter, estimatedValue, mintage, thickness, edge, rarity, grade,
-           historicalContext, notes, category, vis_id, recognizedAt, createdAt, updatedAt,
+           historicalContext, notes, category, vis_id, recognizedBy, recognizedAt, createdAt, updatedAt,
            (CASE WHEN imageObverse != '' OR image != '' THEN 1 ELSE 0 END) as hasObverse,
            (CASE WHEN imageReverse != '' THEN 1 ELSE 0 END) as hasReverse
     FROM coins

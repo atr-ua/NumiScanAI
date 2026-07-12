@@ -101,7 +101,7 @@ export default function App() {
       const originalData = await res.json();
       const actualObverse = (originalData.imagesSwapped && reverse) ? reverse : obverse;
       const actualReverse = (originalData.imagesSwapped && reverse) ? obverse : reverse;
-      const recognized = { ...originalData, image: actualObverse, imageObverse: actualObverse, ...(actualReverse ? { imageReverse: actualReverse } : {}) };
+      const recognized = { ...originalData, image: actualObverse, imageObverse: actualObverse, recognizedBy: selectedModel, ...(actualReverse ? { imageReverse: actualReverse } : {}) };
       setRecentRecognized(recognized);
       setDuplicates(findDuplicates(recognized));
       setNotesInput("");
