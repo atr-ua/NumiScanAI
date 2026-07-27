@@ -20,6 +20,10 @@ All notable changes to this project are documented here.
 - **Day key collision across years** — labels like "12 лип." no longer merge the same day of different years
 - **Dateless coins inflated today** — coins without a parseable `createdAt`/`recognizedAt` were counted as added "now"; they are excluded from per-period bars and counted once in the cumulative base
 - **Libya not recognized** — Ukrainian nominative "Лівія" failed the `лівій` root check, so Libya was missing from the map and continent stats; fixed via `startsWith("лівія")` (Bolivia is unaffected — its check runs earlier)
+- **Jordan misdetected as Denmark** — the substring "данія" inside "йорданія" made Jordan resolve to the Danish flag/ISO code; Denmark's check now excludes any string mentioning "йордан"
+- **Papua New Guinea misdetected as Guinea** — same substring issue ("гвіне"/"guinea" inside "папуа нова гвінея"); Guinea's check now excludes strings mentioning "папуа"/"papua"
+- **Costa Rica spelling variant not recognized** — stored data used the "Коста-Рика" spelling (vs. expected "Коста-Ріка"); both variants now match
+- **Bahamas / Aruba missing** — no ISO/flag mapping existed for "Багами" (→ `bs` 🇧🇸) or "Аруба" (→ `aw` 🇦🇼); added
 
 ---
 
@@ -37,6 +41,10 @@ All notable changes to this project are documented here.
 - **Колізія ключів днів між роками** — мітки на кшталт «12 лип.» більше не об'єднують однакові дні різних років
 - **Монети без дати завищували сьогодні** — монети без коректної `createdAt`/`recognizedAt` рахувалися як додані «зараз»; тепер вони виключені зі стовпчиків і враховані один раз у базі накопичення
 - **Лівія не розпізнавалася** — українська назва «Лівія» не проходила перевірку за коренем «лівій», тому Лівія не потрапляла на карту та в статистику континентів; виправлено через `startsWith("лівія")` (Болівія не зачеплена — її перевірка спрацьовує раніше)
+- **Йорданія розпізнавалася як Данія** — підрядок «данія» всередині «йорданія» призводив до прапора/коду Данії; перевірка Данії тепер виключає рядки зі згадкою «йордан»
+- **Папуа Нова Гвінея розпізнавалася як Гвінея** — та сама проблема з підрядком («гвіне»/«guinea» всередині «папуа нова гвінея»); перевірка Гвінеї тепер виключає рядки зі згадкою «папуа»/«papua»
+- **Не розпізнавався варіант написання Коста-Рики** — у збережених даних використано написання «Коста-Рика» (замість очікуваного «Коста-Ріка»); тепер приймаються обидва варіанти
+- **Відсутні Багами / Аруба** — не було ISO/прапор-мапінгу для «Багами» (→ `bs` 🇧🇸) та «Аруба» (→ `aw` 🇦🇼); додано
 
 ---
 
