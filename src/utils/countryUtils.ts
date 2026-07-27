@@ -75,6 +75,7 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("бельг") || lower.includes("belg")) return "be";
   if (lower.includes("нідер") || lower.includes("nether") || lower.includes("holland") || lower.includes("голланд")) return "nl";
   if (lower.includes("кюрасао") || lower.includes("curacao") || lower.includes("curaçao")) return "cw";
+  if (lower.includes("аруб") || lower.includes("aruba")) return "aw";
   if (lower.includes("португ") || lower.includes("portug")) return "pt";
   if (lower.includes("ірлан") || lower.includes("irelan")) return "ie";
   if (lower.includes("іслан") || lower.includes("icelan")) return "is";
@@ -94,7 +95,8 @@ export const getCountryIsoCode = (country: string): string | null => {
   // ── Northern Europe ───────────────────────────────────────────────────────
   if (lower.includes("швец") || lower.includes("swed") || lower.includes("швед")) return "se";
   if (lower.includes("норв") || lower.includes("norw")) return "no";
-  if (lower.includes("данія") || lower.includes("denm") || lower.includes("denmark")) return "dk";
+  // "йорданія" містить "данія", тому Данію перевіряємо лише без згадки Йорданії
+  if ((lower.includes("данія") && !lower.includes("йордан")) || lower.includes("denm") || lower.includes("denmark")) return "dk";
   if (lower.includes("литв") || lower.includes("lithu")) return "lt";
   if (lower.includes("латв") || lower.includes("latv")) return "lv";
   if (lower.includes("естон") || lower.includes("eston")) return "ee";
@@ -216,7 +218,8 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("ліберія") || lower.includes("liberia")) return "lr";
   if (lower.includes("екваторіальна") || lower.includes("equatorial guinea")) return "gq";
   if (lower.includes("гвінея-бісау") || lower.includes("guinea-biss") || lower.includes("guinea biss")) return "gw";
-  if (lower.includes("гвіне") || lower.includes("guinea")) return "gn";
+  // "папуа нова гвінея" містить "гвіне"/"guinea" — Папуа перевіряється нижче
+  if ((lower.includes("гвіне") || lower.includes("guinea")) && !lower.includes("папуа") && !lower.includes("papua")) return "gn";
   if (lower.includes("габон") || lower.includes("gabon")) return "ga";
   if (lower.includes("того") || lower === "togo") return "tg";
   if (lower.includes("бенін") || lower.includes("benin")) return "bj";
@@ -243,12 +246,13 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("уругвай") || lower.includes("uruguay")) return "uy";
   if (lower.includes("венес") || lower.includes("venez")) return "ve";
   if (lower.includes("куба") || lower.includes("cuba")) return "cu";
+  if (lower.includes("багам") || lower.includes("bahama")) return "bs";
   if (lower.includes("домінікан") || lower.includes("dominican")) return "do";
   if (lower.includes("гаїті") || lower.includes("haiti")) return "ht";
   if (lower.includes("гондурас") || lower.includes("honduras")) return "hn";
   if (lower.includes("нікарагуа") || lower.includes("nicaragua")) return "ni";
   if (lower.includes("панама") || lower.includes("panama")) return "pa";
-  if (lower.includes("коста-ріка") || lower.includes("коста ріка") || lower.includes("costa rica")) return "cr";
+  if (lower.includes("коста-ріка") || lower.includes("коста ріка") || lower.includes("коста-рика") || lower.includes("коста рика") || lower.includes("costa rica")) return "cr";
   if (lower.includes("гватемал") || lower.includes("guatemal")) return "gt";
   if (lower.includes("сальвадор") || lower.includes("el salvador")) return "sv";
   if (lower.includes("суринам") || lower.includes("surinam")) return "sr";
@@ -342,6 +346,7 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("бельг") || lower.includes("belg")) return "🇧🇪";
   if (lower.includes("нідер") || lower.includes("nether") || lower.includes("holland") || lower.includes("голланд")) return "🇳🇱";
   if (lower.includes("кюрасао") || lower.includes("curacao") || lower.includes("curaçao")) return "🇨🇼";
+  if (lower.includes("аруб") || lower.includes("aruba")) return "🇦🇼";
   if (lower.includes("португ") || lower.includes("portug")) return "🇵🇹";
   if (lower.includes("ірлан") || lower.includes("irelan")) return "🇮🇪";
   if (lower.includes("іслан") || lower.includes("icelan")) return "🇮🇸";
@@ -361,7 +366,8 @@ export const getCountryFlag = (country: string): string => {
   // ── Northern Europe ───────────────────────────────────────────────────────
   if (lower.includes("швец") || lower.includes("swed") || lower.includes("швед")) return "🇸🇪";
   if (lower.includes("норв") || lower.includes("norw")) return "🇳🇴";
-  if (lower.includes("данія") || lower.includes("denm") || lower.includes("denmark")) return "🇩🇰";
+  // "йорданія" містить "данія", тому Данію перевіряємо лише без згадки Йорданії
+  if ((lower.includes("данія") && !lower.includes("йордан")) || lower.includes("denm") || lower.includes("denmark")) return "🇩🇰";
   if (lower.includes("литв") || lower.includes("lithu")) return "🇱🇹";
   if (lower.includes("латв") || lower.includes("latv")) return "🇱🇻";
   if (lower.includes("естон") || lower.includes("eston")) return "🇪🇪";
@@ -486,7 +492,8 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("ліберія") || lower.includes("liberia")) return "🇱🇷";
   if (lower.includes("екваторіальна") || lower.includes("equatorial guinea")) return "🇬🇶";
   if (lower.includes("гвінея-бісау") || lower.includes("guinea-biss") || lower.includes("guinea biss")) return "🇬🇼";
-  if (lower.includes("гвіне") || lower.includes("guinea")) return "🇬🇳";
+  // "папуа нова гвінея" містить "гвіне"/"guinea" — Папуа перевіряється нижче
+  if ((lower.includes("гвіне") || lower.includes("guinea")) && !lower.includes("папуа") && !lower.includes("papua")) return "🇬🇳";
   if (lower.includes("габон") || lower.includes("gabon")) return "🇬🇦";
   if (lower.includes("того") || lower === "togo") return "🇹🇬";
   if (lower.includes("бенін") || lower.includes("benin")) return "🇧🇯";
@@ -513,12 +520,13 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("уругвай") || lower.includes("uruguay")) return "🇺🇾";
   if (lower.includes("венес") || lower.includes("venez")) return "🇻🇪";
   if (lower.includes("куба") || lower.includes("cuba")) return "🇨🇺";
+  if (lower.includes("багам") || lower.includes("bahama")) return "🇧🇸";
   if (lower.includes("домінікан") || lower.includes("dominican")) return "🇩🇴";
   if (lower.includes("гаїті") || lower.includes("haiti")) return "🇭🇹";
   if (lower.includes("гондурас") || lower.includes("honduras")) return "🇭🇳";
   if (lower.includes("нікарагуа") || lower.includes("nicaragua")) return "🇳🇮";
   if (lower.includes("панама") || lower.includes("panama")) return "🇵🇦";
-  if (lower.includes("коста-ріка") || lower.includes("коста ріка") || lower.includes("costa rica")) return "🇨🇷";
+  if (lower.includes("коста-ріка") || lower.includes("коста ріка") || lower.includes("коста-рика") || lower.includes("коста рика") || lower.includes("costa rica")) return "🇨🇷";
   if (lower.includes("гватемал") || lower.includes("guatemal")) return "🇬🇹";
   if (lower.includes("сальвадор") || lower.includes("el salvador")) return "🇸🇻";
   if (lower.includes("суринам") || lower.includes("surinam")) return "🇸🇷";
