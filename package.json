@@ -3,7 +3,7 @@
   "description": "ATR NumiScan AI — нумізматичний каталог з AI-розпізнаванням монет",
   "author": "Andrii (ATR) Tarasenko",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

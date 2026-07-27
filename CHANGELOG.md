@@ -4,119 +4,11 @@ All notable changes to this project are documented here.
 
 ---
 
-## [Unreleased] — 2026-07-12
-
-### Added
-- **Continent completion stats** — new block under the world map in Analytics shows, per continent, how many of its countries are present in the collection (`collected / total · %`) with gold progress bars; powered by a new `CONTINENTS` registry in `countryUtils.ts` (sovereign countries per UN geoscheme + Kosovo/Taiwan/Vatican; Russia → Europe, Turkey/Caucasus/Kazakhstan → Asia); historical entities (USSR, GDR, Yugoslavia) and territories (Hong Kong, Gibraltar, …) intentionally count toward neither numerator nor denominator
-- **Timeline fun-fact chips** — 🏆 record day (count + date), ⚡ average pace (coins/day since first addition), 🔥 current streak of consecutive days with additions (plus best streak)
-- **Cumulative growth chart** — gold SVG area chart of collection size over the entire collecting history (daily granularity); interactive crosshair with tooltip (date, total, added that day) on mouse hover and touch
-- **Period total** — the additions bar chart header now shows the window sum (e.g. "Додано за останні 14 днів: +207 шт"); per-bar tooltip includes the running collection size
-- **Macau mapping** — "Макао"/"Macau" now resolves to `mo` / 🇲🇴
-- **AI data verification in coin card** — new panel in the detail card runs a fresh recognition of the stored photos with a user-selected model (defaults to a *different* model than the one that recognized the coin — independent second opinion, no anchoring) and programmatically diffs 12 structured fields (title, denomination, country, year, metal, weight, diameter, thickness, edge, mintage, rarity, grade); discrepancies are listed as `current → proposed` with checkboxes, "Apply selected" fills the edit form — final save stays with the user; full match shows a green confirmation
-- **`recognizedBy` column** — every newly recognized coin stores the AI model id that produced its data (shown in the verification panel); editing an old card never wipes the value (UPSERT keeps existing on empty)
-
-### Fixed
-- **Days tab showed oldest additions** — daily registry keys were built in coin iteration order (API returns newest first), so `.slice(-7)` picked the *oldest* seven days; timeline now aggregates by real local dates, sorts chronologically, and fills gaps with zero-days (last 14 days / 12 months / up to 6 years)
-- **Day key collision across years** — labels like "12 лип." no longer merge the same day of different years
-- **Dateless coins inflated today** — coins without a parseable `createdAt`/`recognizedAt` were counted as added "now"; they are excluded from per-period bars and counted once in the cumulative base
-- **Libya not recognized** — Ukrainian nominative "Лівія" failed the `лівій` root check, so Libya was missing from the map and continent stats; fixed via `startsWith("лівія")` (Bolivia is unaffected — its check runs earlier)
-- **Jordan misdetected as Denmark** — the substring "данія" inside "йорданія" made Jordan resolve to the Danish flag/ISO code; Denmark's check now excludes any string mentioning "йордан"
-- **Papua New Guinea misdetected as Guinea** — same substring issue ("гвіне"/"guinea" inside "папуа нова гвінея"); Guinea's check now excludes strings mentioning "папуа"/"papua"
-- **Costa Rica spelling variant not recognized** — stored data used the "Коста-Рика" spelling (vs. expected "Коста-Ріка"); both variants now match
-- **Bahamas / Aruba missing** — no ISO/flag mapping existed for "Багами" (→ `bs` 🇧🇸) or "Аруба" (→ `aw` 🇦🇼); added
+## [Unreleased]
 
 ---
 
-### Додано
-- **Заповнення по континентах** — новий блок під картою світу в Аналітиці: для кожного континенту кількість країн у колекції із загальної (`зібрано / всього · %`) з золотими прогрес-барами; базується на новому довіднику `CONTINENTS` у `countryUtils.ts` (суверенні країни за геосхемою ООН + Косово/Тайвань/Ватикан; Росія → Європа, Туреччина/Кавказ/Казахстан → Азія); історичні утворення (СРСР, НДР, Югославія) та території (Гонконг, Гібралтар, …) свідомо не враховуються ані в чисельнику, ані в знаменнику
-- **Метрики-факти таймлайну** — 🏆 рекордний день (кількість + дата), ⚡ середній темп (монет/день з першого додавання), 🔥 поточна серія днів поспіль з додаваннями (та рекордна серія)
-- **Графік зростання колекції** — золота SVG area-діаграма розміру колекції за всю історію збирання (по днях); інтерактивне перехрестя з тултіпом (дата, всього, додано за день) при наведенні миші та дотику
-- **Сума за період** — заголовок бар-чарту показує підсумок вікна (напр. «Додано за останні 14 днів: +207 шт»); підказка стовпчика містить розмір колекції на той момент
-- **Маппінг Макао** — «Макао»/"Macau" тепер резолвиться до `mo` / 🇲🇴
-- **AI-перевірка даних у картці монети** — нова панель у картці запускає свіже розпізнавання збережених фото обраною моделлю (за замовчуванням — *іншою*, ніж та, що розпізнавала: незалежна друга думка без ефекту якоря) і програмно порівнює 12 структурованих полів (назва, номінал, країна, рік, метал, вага, діаметр, товщина, гурт, тираж, рідкість, грейд); розбіжності показуються як `поточне → запропоноване` з чекбоксами, «Застосувати вибрані» підставляє значення у форму редагування — фінальне збереження за користувачем; повний збіг — зелене підтвердження
-- **Колонка `recognizedBy`** — кожна нова монета зберігає ID моделі, що розпізнала її дані (видно в панелі перевірки); редагування старої картки не затирає значення (UPSERT зберігає наявне при порожньому)
-
-### Виправлено
-- **Вкладка «По днях» показувала найстаріші додавання** — ключі днів створювалися в порядку ітерації монет (API віддає найновіші першими), тому `.slice(-7)` брав *найстаріші* сім днів; тепер агрегація за реальними локальними датами, хронологічне сортування та заповнення порожніх днів нулями (останні 14 днів / 12 місяців / до 6 років)
-- **Колізія ключів днів між роками** — мітки на кшталт «12 лип.» більше не об'єднують однакові дні різних років
-- **Монети без дати завищували сьогодні** — монети без коректної `createdAt`/`recognizedAt` рахувалися як додані «зараз»; тепер вони виключені зі стовпчиків і враховані один раз у базі накопичення
-- **Лівія не розпізнавалася** — українська назва «Лівія» не проходила перевірку за коренем «лівій», тому Лівія не потрапляла на карту та в статистику континентів; виправлено через `startsWith("лівія")` (Болівія не зачеплена — її перевірка спрацьовує раніше)
-- **Йорданія розпізнавалася як Данія** — підрядок «данія» всередині «йорданія» призводив до прапора/коду Данії; перевірка Данії тепер виключає рядки зі згадкою «йордан»
-- **Папуа Нова Гвінея розпізнавалася як Гвінея** — та сама проблема з підрядком («гвіне»/«guinea» всередині «папуа нова гвінея»); перевірка Гвінеї тепер виключає рядки зі згадкою «папуа»/«papua»
-- **Не розпізнавався варіант написання Коста-Рики** — у збережених даних використано написання «Коста-Рика» (замість очікуваного «Коста-Ріка»); тепер приймаються обидва варіанти
-- **Відсутні Багами / Аруба** — не було ISO/прапор-мапінгу для «Багами» (→ `bs` 🇧🇸) та «Аруба» (→ `aw` 🇦🇼); додано
-
----
-
-## [Unreleased] — 2026-07-11
-
-### Added
-- **Ollama custom model entry** — manual input field on the Services page lets users add any Ollama model name (e.g. `minimax-m3:cloud`) that `/api/tags` does not return; custom models persist in `localStorage`, appear with a "custom" badge, and can be individually removed
-- **LM Studio support** — Services page now includes an LM Studio section with URL config, model list fetched from `/v1/models`, pin/unpin, and the same custom model input field
-- **World map click → country filter** — clicking a highlighted country on the WorldMap choropleth now sets the country filter in the Catalog; `WorldMap` accepts an `onCountryClick` callback; `CollectionAnalytics` passes it through; `CoinDatabase` resolves ISO codes to Ukrainian country names using `getCountryIsoCode`
-- **Coin ID in detail card header** — full coin ID displayed in tiny monospace text next to the card title; click to copy to clipboard; hidden in edit mode
-- **Lightbox keyboard & swipe navigation**:
-  - **Enter** (catalog lightbox) → opens coin detail card; closing the card returns to the same lightbox position
-  - **Esc** closes the detail card (dedicated `useEffect` with `zoomedImageRef` to avoid closing when lightbox is open)
-  - **Touch swipe** — vertical swipe navigates between coins (↑ = next, ↓ = prev); horizontal swipe toggles obverse/reverse; 50 px threshold
-- **`fromCatalog` preserved** — arrow-key and scroll-wheel navigation between coins in the lightbox now carries the `fromCatalog` flag forward so Enter-to-card and hint text stay correct
-
-### Fixed
-- **Czech Republic flag** — "Чеська Республіка" (adjective form "чеськ") now correctly resolves to `🇨🇿`; both `getCountryIsoCode` and the emoji helper updated
-- **Detail card scroll** — eliminated unwanted scrollbar: reduced padding (`p-6` → `px-5 py-3`), image heights (`h-56` → `h-40`), merged two date rows into one line, hidden notes block when empty and not editing, compact footer
-
-### Changed
-- Detail card header now shows the coin ID instead of a separate copy button
-- Lightbox hint text updated: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
-
----
-
-### Додано
-- **Ручне введення моделі Ollama** — поле вводу на сторінці Сервісів дозволяє додати будь-яку назву моделі Ollama (наприклад `minimax-m3:cloud`), яка не відображається у `/api/tags`; кастомні моделі зберігаються в `localStorage`, позначаються бейджем "custom" і видаляються кнопкою ×
-- **Підтримка LM Studio** — сторінка Сервісів тепер включає секцію LM Studio з налаштуванням URL, завантаженням моделей із `/v1/models`, закріпленням і полем введення кастомних моделей
-- **Клік по карті → фільтр** — клік по забарвленій країні на хороплет-карті встановлює фільтр країни в Каталозі; `WorldMap` отримує callback `onCountryClick`; `CoinDatabase` резолвить ISO-коди до українських назв через `getCountryIsoCode`
-- **ID монети в заголовку картки** — повний ID відображається дрібним моноширинним шрифтом поряд з назвою; клік копіює в буфер; приховується в режимі редагування
-- **Навігація в лайтбоксі клавіатурою та свайпом**:
-  - **Enter** (лайтбокс з каталогу) → відкриває картку монети; закриття картки повертає до лайтбоксу
-  - **Esc** закриває картку монети (окремий `useEffect` з `zoomedImageRef`)
-  - **Touch-свайп** — вертикальний свайп (поріг 50 пк) перемикає монети; горизонтальний — аверс/реверс
-- **Збереження `fromCatalog`** — навігація стрілками та колесом миші між монетами тепер зберігає прапор `fromCatalog`
-
-### Виправлено
-- **Прапор Чехії** — "Чеська Республіка" (форма "чеськ") тепер коректно резолвиться до `🇨🇿`
-- **Скрол у картці монети** — усунено небажану смугу прокрутки: зменшено відступи, висоти зображень, об'єднано рядки дат, нотатки приховані коли порожні і не в режимі редагування
-
-### Змінено
-- Заголовок картки монети тепер показує ID замість окремої кнопки копіювання
-- Підказка лайтбоксу оновлена: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
-
----
-
-## [Unreleased] — 2026-06-24
-
-### Added
-- **Loading indicator** — animated spinner with coin logo shown on first app load while coins are being fetched from the database; all tabs blocked until data is ready
-- **Collection physical stats** — three new fun metric cards in Analytics: total weight (g / kg), total stack height from coin thickness (mm / cm / m), and total row length from diameter (mm / cm / m); each card shows how many coins contributed data
-- **Desktop launcher** — `NumiScan.cmd` shortcut on the desktop starts the dev server and opens the browser automatically
-
-### Changed
-- `fetchCoins` now tracks loading state (`isLoading`); tab content hidden during initial fetch
-- Analytics grid for physical stats uses 3-column layout matching the existing stat widgets
-
----
-
-### Додано
-- **Індикатор завантаження** — анімований спінер з іконкою монети відображається при першому запуску, поки дані завантажуються з бази; всі вкладки заблоковані до завершення
-- **Фізичні параметри колекції** — три нові картки на вкладці Статистика: загальна вага (г / кг), висота стопки монет (мм / см / м), довжина монет у ряд (мм / см / м); у підписі — кількість монет з даними
-- **Ярлик запуску** — файл `NumiScan.cmd` на робочому столі запускає сервер і відкриває браузер
-
-### Змінено
-- `fetchCoins` відстежує стан `isLoading`; вміст вкладок приховується під час першого завантаження
-- Сітка фізичних параметрів у Статистиці — 3 колонки
-
----
-
-## [Unreleased] — 2026-06-17
+## [1.4.0] — 2026-07-27
 
 ### Added
 - **OpenAI integration** — coin recognition now supports GPT-4o, GPT-4.1, GPT-5.x and o4-mini alongside Gemini; provider auto-detected by model prefix (`gpt-`/`o[n]`)
@@ -127,19 +19,52 @@ All notable changes to this project are documented here.
 - **Gemini model picker** — Services page fetches available multimodal Gemini models from API; users can pin up to 6 models (raised from 4) for quick access on the Recognition tab
 - **Pinned models** — mixed Gemini + OpenAI model buttons on the Recognition tab; OpenAI models highlighted in green, Gemini in gold
 - **Recognition prompt improvements** — system prompt now references NGC, PCGS, Krause Standard Catalog; user prompt for dual-image mode lists all visual cues (denomination, portrait, emblem, mint mark, inscription script, edge); refinement prompt explicitly instructs re-deriving all dependent fields
+- **Loading indicator** — animated spinner with coin logo shown on first app load while coins are being fetched from the database; all tabs blocked until data is ready
+- **Collection physical stats** — three new fun metric cards in Analytics: total weight (g / kg), total stack height from coin thickness (mm / cm / m), and total row length from diameter (mm / cm / m); each card shows how many coins contributed data
+- **Desktop launcher** — `NumiScan.cmd` shortcut on the desktop starts the dev server and opens the browser automatically
+- **Ollama custom model entry** — manual input field on the Services page lets users add any Ollama model name (e.g. `minimax-m3:cloud`) that `/api/tags` does not return; custom models persist in `localStorage`, appear with a "custom" badge, and can be individually removed
+- **LM Studio support** — Services page now includes an LM Studio section with URL config, model list fetched from `/v1/models`, pin/unpin, and the same custom model input field
+- **World map click → country filter** — clicking a highlighted country on the WorldMap choropleth now sets the country filter in the Catalog; `WorldMap` accepts an `onCountryClick` callback; `CollectionAnalytics` passes it through; `CoinDatabase` resolves ISO codes to Ukrainian country names using `getCountryIsoCode`
+- **Coin ID in detail card header** — full coin ID displayed in tiny monospace text next to the card title; click to copy to clipboard; hidden in edit mode
+- **Lightbox keyboard & swipe navigation**:
+  - **Enter** (catalog lightbox) → opens coin detail card; closing the card returns to the same lightbox position
+  - **Esc** closes the detail card (dedicated `useEffect` with `zoomedImageRef` to avoid closing when lightbox is open)
+  - **Touch swipe** — vertical swipe navigates between coins (↑ = next, ↓ = prev); horizontal swipe toggles obverse/reverse; 50 px threshold
+- **`fromCatalog` preserved** — arrow-key and scroll-wheel navigation between coins in the lightbox now carries the `fromCatalog` flag forward so Enter-to-card and hint text stay correct
+- **Continent completion stats** — new block under the world map in Analytics shows, per continent, how many of its countries are present in the collection (`collected / total · %`) with gold progress bars; powered by a new `CONTINENTS` registry in `countryUtils.ts` (sovereign countries per UN geoscheme + Kosovo/Taiwan/Vatican; Russia → Europe, Turkey/Caucasus/Kazakhstan → Asia); historical entities (USSR, GDR, Yugoslavia) and territories (Hong Kong, Gibraltar, …) intentionally count toward neither numerator nor denominator
+- **Timeline fun-fact chips** — 🏆 record day (count + date), ⚡ average pace (coins/day since first addition), 🔥 current streak of consecutive days with additions (plus best streak)
+- **Cumulative growth chart** — gold SVG area chart of collection size over the entire collecting history (daily granularity); interactive crosshair with tooltip (date, total, added that day) on mouse hover and touch
+- **Period total** — the additions bar chart header now shows the window sum (e.g. "Додано за останні 14 днів: +207 шт"); per-bar tooltip includes the running collection size
+- **Macau mapping** — "Макао"/"Macau" now resolves to `mo` / 🇲🇴
+- **AI data verification in coin card** — new panel in the detail card runs a fresh recognition of the stored photos with a user-selected model (defaults to a *different* model than the one that recognized the coin — independent second opinion, no anchoring) and programmatically diffs 12 structured fields (title, denomination, country, year, metal, weight, diameter, thickness, edge, mintage, rarity, grade); discrepancies are listed as `current → proposed` with checkboxes, "Apply selected" fills the edit form — final save stays with the user; full match shows a green confirmation
+- **`recognizedBy` column** — every newly recognized coin stores the AI model id that produced its data (shown in the verification panel); editing an old card never wipes the value (UPSERT keeps existing on empty)
 
 ### Changed
 - Default pinned models reduced from 4 to 3 to leave room for OpenAI models out of the box
 - Pin limit raised from 4 to 6
 - `CollectionAnalytics` passes representative coin year to `CountryFlag` for correct historical flag display
 - `CoinDatabase` passes `coin.year` to `CountryFlag` in both list and detail views
+- `fetchCoins` now tracks loading state (`isLoading`); tab content hidden during initial fetch
+- Analytics grid for physical stats uses 3-column layout matching the existing stat widgets
+- Detail card header now shows the coin ID instead of a separate copy button
+- Lightbox hint text updated: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
 
 ### Technical
 - Added `openai` npm dependency (Structured Outputs API)
 - Shared `buildCoinSystemPrompt` / `buildCoinUserPrompt` helpers used by both Gemini and OpenAI paths
 - `OPENAI_API_KEY` documented in `.env.example`
 
----
+### Fixed
+- **Czech Republic flag** — "Чеська Республіка" (adjective form "чеськ") now correctly resolves to `🇨🇿`; both `getCountryIsoCode` and the emoji helper updated
+- **Detail card scroll** — eliminated unwanted scrollbar: reduced padding (`p-6` → `px-5 py-3`), image heights (`h-56` → `h-40`), merged two date rows into one line, hidden notes block when empty and not editing, compact footer
+- **Days tab showed oldest additions** — daily registry keys were built in coin iteration order (API returns newest first), so `.slice(-7)` picked the *oldest* seven days; timeline now aggregates by real local dates, sorts chronologically, and fills gaps with zero-days (last 14 days / 12 months / up to 6 years)
+- **Day key collision across years** — labels like "12 лип." no longer merge the same day of different years
+- **Dateless coins inflated today** — coins without a parseable `createdAt`/`recognizedAt` were counted as added "now"; they are excluded from per-period bars and counted once in the cumulative base
+- **Libya not recognized** — Ukrainian nominative "Лівія" failed the `лівій` root check, so Libya was missing from the map and continent stats; fixed via `startsWith("лівія")` (Bolivia is unaffected — its check runs earlier)
+- **Jordan misdetected as Denmark** — the substring "данія" inside "йорданія" made Jordan resolve to the Danish flag/ISO code; Denmark's check now excludes any string mentioning "йордан"
+- **Papua New Guinea misdetected as Guinea** — same substring issue ("гвіне"/"guinea" inside "папуа нова гвінея"); Guinea's check now excludes strings mentioning "папуа"/"papua"
+- **Costa Rica spelling variant not recognized** — stored data used the "Коста-Рика" spelling (vs. expected "Коста-Ріка"); both variants now match
+- **Bahamas / Aruba missing** — no ISO/flag mapping existed for "Багами" (→ `bs` 🇧🇸) or "Аруба" (→ `aw` 🇦🇼); added
 
 ### Додано
 - **Інтеграція OpenAI** — розпізнавання монет тепер підтримує GPT-4o, GPT-4.1, GPT-5.x та o4-mini поряд із Gemini; провайдер визначається автоматично за префіксом моделі (`gpt-`/`o[n]`)
@@ -150,17 +75,52 @@ All notable changes to this project are documented here.
 - **Вибір моделі Gemini** — сторінка Сервісів завантажує актуальний список мультимодальних моделей через API; можна закріпити до 6 моделей (було 4) для швидкого доступу на вкладці Розпізнавання
 - **Закріплені моделі** — кнопки Gemini та OpenAI на вкладці Розпізнавання; OpenAI підсвічується зеленим, Gemini — золотим
 - **Покращення промптів** — системний промпт тепер посилається на NGC, PCGS, Krause Standard Catalog; промпт для двох фото перелічує всі візуальні підказки (номінал, портрет, герб, мітка МД, мова напису, гурт); промпт уточнення явно вказує перерахувати всі залежні поля
+- **Індикатор завантаження** — анімований спінер з іконкою монети відображається при першому запуску, поки дані завантажуються з бази; всі вкладки заблоковані до завершення
+- **Фізичні параметри колекції** — три нові картки на вкладці Статистика: загальна вага (г / кг), висота стопки монет (мм / см / м), довжина монет у ряд (мм / см / м); у підписі — кількість монет з даними
+- **Ярлик запуску** — файл `NumiScan.cmd` на робочому столі запускає сервер і відкриває браузер
+- **Ручне введення моделі Ollama** — поле вводу на сторінці Сервісів дозволяє додати будь-яку назву моделі Ollama (наприклад `minimax-m3:cloud`), яка не відображається у `/api/tags`; кастомні моделі зберігаються в `localStorage`, позначаються бейджем "custom" і видаляються кнопкою ×
+- **Підтримка LM Studio** — сторінка Сервісів тепер включає секцію LM Studio з налаштуванням URL, завантаженням моделей із `/v1/models`, закріпленням і полем введення кастомних моделей
+- **Клік по карті → фільтр** — клік по забарвленій країні на хороплет-карті встановлює фільтр країни в Каталозі; `WorldMap` отримує callback `onCountryClick`; `CoinDatabase` резолвить ISO-коди до українських назв через `getCountryIsoCode`
+- **ID монети в заголовку картки** — повний ID відображається дрібним моноширинним шрифтом поряд з назвою; клік копіює в буфер; приховується в режимі редагування
+- **Навігація в лайтбоксі клавіатурою та свайпом**:
+  - **Enter** (лайтбокс з каталогу) → відкриває картку монети; закриття картки повертає до лайтбоксу
+  - **Esc** закриває картку монети (окремий `useEffect` з `zoomedImageRef`)
+  - **Touch-свайп** — вертикальний свайп (поріг 50 пк) перемикає монети; горизонтальний — аверс/реверс
+- **Збереження `fromCatalog`** — навігація стрілками та колесом миші між монетами тепер зберігає прапор `fromCatalog`
+- **Заповнення по континентах** — новий блок під картою світу в Аналітиці: для кожного континенту кількість країн у колекції із загальної (`зібрано / всього · %`) з золотими прогрес-барами; базується на новому довіднику `CONTINENTS` у `countryUtils.ts` (суверенні країни за геосхемою ООН + Косово/Тайвань/Ватикан; Росія → Європа, Туреччина/Кавказ/Казахстан → Азія); історичні утворення (СРСР, НДР, Югославія) та території (Гонконг, Гібралтар, …) свідомо не враховуються ані в чисельнику, ані в знаменнику
+- **Метрики-факти таймлайну** — 🏆 рекордний день (кількість + дата), ⚡ середній темп (монет/день з першого додавання), 🔥 поточна серія днів поспіль з додаваннями (та рекордна серія)
+- **Графік зростання колекції** — золота SVG area-діаграма розміру колекції за всю історію збирання (по днях); інтерактивне перехрестя з тултіпом (дата, всього, додано за день) при наведенні миші та дотику
+- **Сума за період** — заголовок бар-чарту показує підсумок вікна (напр. «Додано за останні 14 днів: +207 шт»); підказка стовпчика містить розмір колекції на той момент
+- **Маппінг Макао** — «Макао»/"Macau" тепер резолвиться до `mo` / 🇲🇴
+- **AI-перевірка даних у картці монети** — нова панель у картці запускає свіже розпізнавання збережених фото обраною моделлю (за замовчуванням — *іншою*, ніж та, що розпізнавала: незалежна друга думка без ефекту якоря) і програмно порівнює 12 структурованих полів (назва, номінал, країна, рік, метал, вага, діаметр, товщина, гурт, тираж, рідкість, грейд); розбіжності показуються як `поточне → запропоноване` з чекбоксами, «Застосувати вибрані» підставляє значення у форму редагування — фінальне збереження за користувачем; повний збіг — зелене підтвердження
+- **Колонка `recognizedBy`** — кожна нова монета зберігає ID моделі, що розпізнала її дані (видно в панелі перевірки); редагування старої картки не затирає значення (UPSERT зберігає наявне при порожньому)
 
 ### Змінено
 - Дефолтний список закріплених моделей скорочено з 4 до 3, щоб залишити місце для OpenAI
 - Ліміт закріплених моделей підвищено з 4 до 6
 - `CollectionAnalytics` передає рік монети в `CountryFlag` для коректного відображення історичного прапора
 - `CoinDatabase` передає `coin.year` до `CountryFlag` у списку та детальній панелі
+- `fetchCoins` відстежує стан `isLoading`; вміст вкладок приховується під час першого завантаження
+- Сітка фізичних параметрів у Статистиці — 3 колонки
+- Заголовок картки монети тепер показує ID замість окремої кнопки копіювання
+- Підказка лайтбоксу оновлена: `"← → свайп — аверс/реверс · ↑↓ ↕ свайп — монета · Enter — картка · Esc закрити"`
 
 ### Технічне
 - Додано npm-залежність `openai` (Structured Outputs API)
 - Спільні хелпери `buildCoinSystemPrompt` / `buildCoinUserPrompt` використовуються обома гілками (Gemini та OpenAI)
 - `OPENAI_API_KEY` задокументовано у `.env.example`
+
+### Виправлено
+- **Прапор Чехії** — "Чеська Республіка" (форма "чеськ") тепер коректно резолвиться до `🇨🇿`
+- **Скрол у картці монети** — усунено небажану смугу прокрутки: зменшено відступи, висоти зображень, об'єднано рядки дат, нотатки приховані коли порожні і не в режимі редагування
+- **Вкладка «По днях» показувала найстаріші додавання** — ключі днів створювалися в порядку ітерації монет (API віддає найновіші першими), тому `.slice(-7)` брав *найстаріші* сім днів; тепер агрегація за реальними локальними датами, хронологічне сортування та заповнення порожніх днів нулями (останні 14 днів / 12 місяців / до 6 років)
+- **Колізія ключів днів між роками** — мітки на кшталт «12 лип.» більше не об'єднують однакові дні різних років
+- **Монети без дати завищували сьогодні** — монети без коректної `createdAt`/`recognizedAt` рахувалися як додані «зараз»; тепер вони виключені зі стовпчиків і враховані один раз у базі накопичення
+- **Лівія не розпізнавалася** — українська назва «Лівія» не проходила перевірку за коренем «лівій», тому Лівія не потрапляла на карту та в статистику континентів; виправлено через `startsWith("лівія")` (Болівія не зачеплена — її перевірка спрацьовує раніше)
+- **Йорданія розпізнавалася як Данія** — підрядок «данія» всередині «йорданія» призводив до прапора/коду Данії; перевірка Данії тепер виключає рядки зі згадкою «йордан»
+- **Папуа Нова Гвінея розпізнавалася як Гвінея** — та сама проблема з підрядком («гвіне»/«guinea» всередині «папуа нова гвінея»); перевірка Гвінеї тепер виключає рядки зі згадкою «папуа»/«papua»
+- **Не розпізнавався варіант написання Коста-Рики** — у збережених даних використано написання «Коста-Рика» (замість очікуваного «Коста-Ріка»); тепер приймаються обидва варіанти
+- **Відсутні Багами / Аруба** — не було ISO/прапор-мапінгу для «Багами» (→ `bs` 🇧🇸) та «Аруба» (→ `aw` 🇦🇼); додано
 
 ---
 
