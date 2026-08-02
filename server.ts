@@ -10,7 +10,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
-import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds } from "./src/db.js";
+import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds, dbGetNumistaQuota, dbSetNumistaQuota } from "./src/db.js";
 import { generateCatalogPdf } from "./src/pdfExport.js";
 
 dotenv.config();
@@ -542,6 +542,7 @@ app.post("/api/recognize-coin", async (req, res) => {
 
 const NUMISTA_BASE = "https://api.numista.com/api/v3";
 const NUMISTA_SEARCH = "/types";   // coin type search (specs: weight, size, etc.)
+const NUMISTA_MONTHLY_LIMIT = 2000;
 
 const EDGE_UA: Record<string, string> = {
   plain: "гладкий", smooth: "гладкий",
@@ -552,37 +553,95 @@ const EDGE_UA: Record<string, string> = {
   "plain and reeded sections": "комбінований",
 };
 
-const ISO_TO_EN: Record<string, string> = {
-  ua:"ukraine", us:"united states", gb:"united kingdom", de:"germany",
-  fr:"france", it:"italy", es:"spain", ca:"canada", au:"australia", nz:"new zealand",
-  jp:"japan", cn:"china", ru:"russia", pl:"poland", nl:"netherlands", be:"belgium",
-  se:"sweden", no:"norway", dk:"denmark", fi:"finland", at:"austria", ch:"switzerland",
-  cz:"czechia", sk:"slovakia", hu:"hungary", ro:"romania", bg:"bulgaria", tr:"turkey",
-  gr:"greece", hr:"croatia", rs:"serbia", si:"slovenia", ba:"bosnia and herzegovina",
-  me:"montenegro", mk:"north macedonia", by:"belarus", kz:"kazakhstan", ge:"georgia",
-  am:"armenia", az:"azerbaijan", md:"moldova", lt:"lithuania", lv:"latvia", ee:"estonia",
-  pt:"portugal", ie:"ireland", is:"iceland", lu:"luxembourg", mt:"malta", cy:"cyprus",
-  mc:"monaco", va:"vatican", sm:"san marino", ad:"andorra", li:"liechtenstein",
-  in:"india", pk:"pakistan", bd:"bangladesh", np:"nepal", lk:"sri lanka", af:"afghanistan",
-  ir:"iran", iq:"iraq", sy:"syria", il:"israel", jo:"jordan", sa:"saudi arabia",
-  ae:"united arab emirates", om:"oman", kw:"kuwait", qa:"qatar", bh:"bahrain", ye:"yemen",
-  eg:"egypt", ma:"morocco", dz:"algeria", tn:"tunisia", ly:"libya", sd:"sudan",
-  et:"ethiopia", ke:"kenya", ng:"nigeria", gh:"ghana", za:"south africa", mz:"mozambique",
-  tz:"tanzania", ug:"uganda", zw:"zimbabwe", zm:"zambia", mw:"malawi", bw:"botswana",
-  br:"brazil", ar:"argentina", cl:"chile", co:"colombia", pe:"peru", ve:"venezuela",
-  mx:"mexico", cu:"cuba", do:"dominican republic", bo:"bolivia", ec:"ecuador",
-  py:"paraguay", uy:"uruguay", gt:"guatemala", cr:"costa rica", hn:"honduras",
-  ni:"nicaragua", pa:"panama", sv:"el salvador", sg:"singapore", th:"thailand",
-  ph:"philippines", my:"malaysia", id:"indonesia", vn:"vietnam", kr:"south korea",
-  kp:"north korea", tw:"taiwan", mn:"mongolia", mm:"myanmar",
-};
+// In-memory cache of the current month's Numista request count, backed by app_settings
+// so it survives server restarts. Numista's plan resets on the calendar month, not on a
+// rolling 30-day window, so the key is just "YYYY-MM".
+let numistaQuotaState: { month: string; count: number } | null = null;
+
+function currentQuotaMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+async function bumpNumistaQuota(): Promise<{ month: string; count: number }> {
+  const month = currentQuotaMonth();
+  if (!numistaQuotaState) numistaQuotaState = await dbGetNumistaQuota();
+  if (numistaQuotaState.month !== month) numistaQuotaState = { month, count: 0 };
+  numistaQuotaState.count += 1;
+  await dbSetNumistaQuota(month, numistaQuotaState.count);
+  return numistaQuotaState;
+}
+
+async function readNumistaQuota(): Promise<{ month: string; count: number }> {
+  const month = currentQuotaMonth();
+  if (!numistaQuotaState) numistaQuotaState = await dbGetNumistaQuota();
+  return numistaQuotaState.month === month ? numistaQuotaState : { month, count: 0 };
+}
 
 async function numistaFetch(path: string, apiKey: string): Promise<any> {
   const sep = path.includes("?") ? "&" : "?";
   const url = `${NUMISTA_BASE}${path}${sep}api_key=${apiKey}`;
   const res = await fetch(url, { headers: { "Numista-API-Key": apiKey } });
+  await bumpNumistaQuota(); // every call — success or not — counts against the plan's monthly quota
   if (!res.ok) throw new Error(`Numista ${res.status}: ${await res.text()}`);
   return res.json();
+}
+
+const translateCache = new Map<string, string>();
+
+// Free Google Translate endpoint (no key needed) — translates UA coin/country names
+// to English so the Numista query text matches its English-language catalogue.
+async function translateToEnglish(text: string): Promise<string> {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return "";
+  const cached = translateCache.get(trimmed);
+  if (cached) return cached;
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=uk&tl=en&dt=t&q=${encodeURIComponent(trimmed)}`;
+    const res = await fetch(url);
+    if (!res.ok) return trimmed;
+    const data = await res.json();
+    const translated = ((data?.[0] || []) as any[]).map((chunk) => chunk[0]).join("").trim();
+    const result = translated || trimmed;
+    translateCache.set(trimmed, result);
+    return result;
+  } catch {
+    return trimmed;
+  }
+}
+
+// The Numista `issuer` filter expects its own internal country code (e.g. Ethiopia is
+// "ethiopia_section", Bahamas is "bahamas"), not a slugified English name — those don't
+// line up for many countries and the API 400s on an unrecognized code. We fetch the
+// authoritative code list once (~11.8k entries, no pagination) and cache it in memory,
+// then resolve by matching the first word of the (translated) country name.
+type NumistaIssuer = { code: string; name: string; level: number };
+let issuersCache: NumistaIssuer[] | null = null;
+let issuersPromise: Promise<NumistaIssuer[]> | null = null;
+
+function normalizeIssuerName(s: string): string {
+  return s.toLowerCase().replace(/[,.]/g, "").trim();
+}
+
+async function loadNumistaIssuers(apiKey: string): Promise<NumistaIssuer[]> {
+  if (issuersCache) return issuersCache;
+  if (!issuersPromise) {
+    issuersPromise = numistaFetch(`/issuers?lang=en`, apiKey).then((data) => {
+      issuersCache = (data.issuers || []).map((i: any) => ({ code: i.code, name: i.name, level: i.level }));
+      return issuersCache!;
+    });
+  }
+  return issuersPromise;
+}
+
+async function resolveIssuerCode(countryEn: string, apiKey: string): Promise<string> {
+  if (!countryEn) return "";
+  const issuers = await loadNumistaIssuers(apiKey);
+  const firstWord = normalizeIssuerName(countryEn).split(" ")[0];
+  if (!firstWord) return "";
+  const isMatch = (i: NumistaIssuer) => normalizeIssuerName(i.name).split(" ")[0] === firstWord;
+  return issuers.find((i) => i.level === 1 && isMatch(i))?.code
+      || issuers.find(isMatch)?.code
+      || "";
 }
 
 function extractMintageForYear(coin: any, year: number): string | null {
@@ -602,6 +661,17 @@ function extractMintageForYear(coin: any, year: number): string | null {
   return null;
 }
 
+// API: current month's Numista request usage (plan quota is 2000/calendar month).
+app.get("/api/numista-quota", async (_req, res) => {
+  const quota = await readNumistaQuota();
+  res.json({ month: quota.month, count: quota.count, limit: NUMISTA_MONTHLY_LIMIT });
+});
+
+// Only one sync loop may run at a time — starting a new one aborts whatever's still
+// running from a previous request (the client closing its EventSource, e.g. via "Стоп"
+// or a page reload, does NOT stop the server-side loop on its own; see below).
+let currentSync: { aborted: boolean } | null = null;
+
 // ── Numista sync (SSE) ────────────────────────────────────────────────────────
 app.get("/api/numista-sync", async (req, res) => {
   const apiKey = process.env.NUMISTA_API_KEY;
@@ -617,8 +687,14 @@ app.get("/api/numista-sync", async (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
 
-  const sse = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const sse = (data: object) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`); };
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // Cancel any previous run still looping in the background, then claim the slot.
+  if (currentSync) currentSync.aborted = true;
+  const sync = { aborted: false };
+  currentSync = sync;
+  req.on("close", () => { sync.aborted = true; });
 
   try {
     const allCoins = await dbGetCoinsForMintage();
@@ -631,39 +707,77 @@ app.get("/api/numista-sync", async (req, res) => {
           isEmpty(c.edge) || isEmpty(c.mintage)
         );
 
-    sse({ type: "start", total: targets.length, skipped: allCoins.length - targets.length });
+    const startQuota = await readNumistaQuota();
+    sse({ type: "start", total: targets.length, skipped: allCoins.length - targets.length, quota: startQuota.count, quotaLimit: NUMISTA_MONTHLY_LIMIT });
 
     let updated = 0, notFound = 0, errors = 0;
 
     for (let i = 0; i < targets.length; i++) {
+      if (sync.aborted) break;
       const coin = targets[i];
-      sse({ type: "progress", current: i + 1, total: targets.length, title: coin.title, country: coin.country });
+      sse({ type: "progress", current: i + 1, total: targets.length, title: coin.title, country: coin.country, quota: numistaQuotaState?.count });
 
+      let queryLog = "";
       try {
-        // Build search query: denomination number + year
-        const denomNum = (coin.denomination || "").replace(/[^\d.,]/g, "").trim() || coin.denomination || "";
-        const year = Number(coin.year) || 0;
-        const q = encodeURIComponent(`${denomNum} ${coin.year}`.trim());
+        // Build search query. coin.year sometimes carries extra notes (e.g. "1977 (EE 1969)")
+        // — take the first 4-digit number.
+        const year = parseInt(String(coin.year).match(/\d{4}/)?.[0] || "0", 10);
 
-        const searchData = await numistaFetch(`/types?q=${q}&lang=en&count=10`, apiKey);
+        // Country → Numista issuer code (via translation + the authoritative /issuers list).
+        const countryEn = await translateToEnglish(coin.country);
+        const issuerCode = await resolveIssuerCode(countryEn, apiKey);
+
+        // Primary query text is the bare denomination number + year — language/currency-name
+        // agnostic, so it can't be broken by a mistranslated currency unit (e.g. Ethiopia's
+        // "santim" mistranslating to "centimes", or Indonesia's "rupiah" to "rupees").
+        const denomNum = (coin.denomination || "").match(/\d+(?:[.,]\d+)?/)?.[0] || "";
+        const denomEn = (await translateToEnglish(coin.denomination)) || coin.denomination || "";
+        const yearText = String(year || coin.year);
+        const qNumeric = encodeURIComponent(`${denomNum} ${yearText}`.trim());
+        const qTranslated = encodeURIComponent(`${denomEn} ${yearText}`.trim());
+        const issuerParam = issuerCode ? `&issuer=${issuerCode}` : "";
+
+        queryLog = `q="${denomNum} ${yearText}"${issuerCode ? ` issuer=${issuerCode}` : ""}`;
+        let searchData = await numistaFetch(`/types?q=${qNumeric}${issuerParam}&lang=en&count=10`, apiKey);
         await delay(400);
+        let results: any[] = searchData.types || searchData.coins || [];
 
-        const results: any[] = searchData.types || searchData.coins || [];
-        if (!results.length) { notFound++; sse({ type: "not_found", title: coin.title }); continue; }
+        // Bare-number search can miss decimal/fractional denominations — retry with the
+        // translated currency-name text (still scoped to the same issuer, if resolved).
+        if (!results.length) {
+          queryLog = `q="${denomEn} ${yearText}"${issuerCode ? ` issuer=${issuerCode}` : ""}`;
+          searchData = await numistaFetch(`/types?q=${qTranslated}${issuerParam}&lang=en&count=10`, apiKey);
+          await delay(400);
+          results = searchData.types || searchData.coins || [];
+        }
 
-        // Match by year range, prefer issuer matching country
-        const isoCode = (coin.country || "").toLowerCase();
-        const countryEn = Object.entries(ISO_TO_EN).find(([, en]) =>
-          (coin.country || "").toLowerCase().includes(en.split(" ")[0])
-        )?.[1] || "";
+        // Issuer code may still be wrong/unresolved for this country — retry fully unrestricted.
+        if (!results.length && issuerCode) {
+          queryLog = `q="${denomEn} ${yearText}" (без issuer)`;
+          searchData = await numistaFetch(`/types?q=${qTranslated}&lang=en&count=10`, apiKey);
+          await delay(400);
+          results = searchData.types || searchData.coins || [];
+        }
 
-        let best = results.find((r: any) =>
-          r.min_year <= year && r.max_year >= year &&
-          (r.issuer?.name || "").toLowerCase().includes(countryEn.split(" ")[0])
-        ) || results.find((r: any) => r.min_year <= year && r.max_year >= year)
+        if (!results.length) { notFound++; sse({ type: "not_found", title: coin.title, query: queryLog }); continue; }
+
+        // Prefer a result whose year range AND leading denomination number both match —
+        // a same-year search often returns several denominations of the same country/set
+        // (e.g. 1/5/10/25/50 santeem all issued in 1977).
+        const countryFirstWord = countryEn.toLowerCase().split(" ")[0];
+        const titleNum = (r: any) => String(r.title || "").match(/\d+(?:[.,]\d+)?/)?.[0] || "";
+        const inYear = (r: any) => r.min_year <= year && r.max_year >= year;
+        const matchesIssuer = (r: any) => !!countryFirstWord && (r.issuer?.name || "").toLowerCase().includes(countryFirstWord);
+
+        let best = results.find((r: any) => inYear(r) && titleNum(r) === denomNum && matchesIssuer(r))
+          || results.find((r: any) => inYear(r) && titleNum(r) === denomNum)
+          || results.find((r: any) => inYear(r) && matchesIssuer(r))
+          || results.find((r: any) => inYear(r))
           || results[0];
 
-        if (!best) { notFound++; sse({ type: "not_found", title: coin.title }); continue; }
+        if (!best) { notFound++; sse({ type: "not_found", title: coin.title, query: queryLog }); continue; }
+
+        const match = `"${best.title}" · ${best.issuer?.name || "?"} · ${best.min_year}-${best.max_year}`;
 
         // Fetch full details
         const detail = await numistaFetch(`/types/${best.id}?lang=en`, apiKey);
@@ -693,22 +807,25 @@ app.get("/api/numista-sync", async (req, res) => {
         if (Object.keys(specs).length) {
           await dbUpdateSpecs(coin.id, specs);
           updated++;
-          sse({ type: "updated", title: coin.title, fields: Object.keys(specs) });
+          sse({ type: "updated", title: coin.title, fields: Object.keys(specs), query: queryLog, match });
         } else {
           notFound++;
-          sse({ type: "no_data", title: coin.title });
+          sse({ type: "no_data", title: coin.title, query: queryLog, match });
         }
       } catch (coinErr: any) {
         errors++;
-        sse({ type: "error", title: coin.title, message: coinErr.message });
+        sse({ type: "error", title: coin.title, message: coinErr.message, query: queryLog });
         await delay(1000);
       }
     }
 
-    sse({ type: "done", updated, notFound, errors, total: targets.length });
+    if (!sync.aborted) {
+      sse({ type: "done", updated, notFound, errors, total: targets.length, quota: numistaQuotaState?.count });
+    }
   } catch (e: any) {
     sse({ type: "fatal", message: e.message });
   } finally {
+    if (currentSync === sync) currentSync = null;
     res.end();
   }
 });

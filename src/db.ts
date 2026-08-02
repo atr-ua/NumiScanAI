@@ -65,6 +65,13 @@ export const initDb = async (): Promise<void> => {
     )
   `);
 
+  await run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT DEFAULT ''
+    )
+  `);
+
   // Migrations for existing databases
   try { await run(`ALTER TABLE coins ADD COLUMN vis_id INTEGER DEFAULT 0`); } catch (_) {}
   try { await run(`ALTER TABLE coins ADD COLUMN mintage TEXT DEFAULT ''`); } catch (_) {}
@@ -224,6 +231,20 @@ export const dbSaveCoin = async (c: any): Promise<any> => {
 /** Delete a coin by id. */
 export const dbDeleteCoin = (id: string): Promise<void> =>
   run("DELETE FROM coins WHERE id = ?", [id]);
+
+/** Numista API monthly request quota tracking (persists across server restarts). */
+export const dbGetNumistaQuota = async (): Promise<{ month: string; count: number }> => {
+  const row = await get<{ value: string }>("SELECT value FROM app_settings WHERE key = 'numista_quota'");
+  if (!row) return { month: "", count: 0 };
+  try { return JSON.parse(row.value); } catch { return { month: "", count: 0 }; }
+};
+
+export const dbSetNumistaQuota = (month: string, count: number): Promise<void> =>
+  run(
+    `INSERT INTO app_settings (key, value) VALUES ('numista_quota', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [JSON.stringify({ month, count })]
+  );
 
 /** Fetches full coin data (including images) for the given IDs, preserving input order. */
 export const dbGetCoinsByIds = async (ids: string[]): Promise<any[]> => {

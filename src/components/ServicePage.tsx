@@ -4,7 +4,7 @@
  * @author Andrii (ATR) Tarasenko
  */
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Server, Code, Copy, Check, ShieldCheck, Cpu, Sparkles, RefreshCw, BookOpen, CheckCircle, XCircle, AlertCircle, FileText, Download, Zap, X } from "lucide-react";
 import type { Coin } from "../types";
 
@@ -55,6 +55,18 @@ const BATCH_MODELS = [
   { id: "gemini-3.5-flash",      label: "3.5 Flash",   note: "новітня" },
   { id: "gemini-3.1-flash-lite", label: "3.1 Lite",    note: "надшвидка" },
 ];
+
+// Numista sync log labels
+const NU_FIELD_UA: Record<string, string> = {
+  weight: "вага", diameter: "діаметр", thickness: "товщина", edge: "гурт", mintage: "тираж",
+};
+const NU_STATUS_UA: Record<string, { label: string; cls: string }> = {
+  updated:   { label: "ОНОВЛЕНО",       cls: "text-emerald-400" },
+  no_data:   { label: "БЕЗ ЗМІН",       cls: "text-amber-400/80" },
+  not_found: { label: "НЕ ЗНАЙДЕНО",    cls: "text-white/30" },
+  error:     { label: "ПОМИЛКА",        cls: "text-red-400" },
+  fatal:     { label: "ФАТАЛЬНА ПОМИЛКА", cls: "text-red-400" },
+};
 
 export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterDescription = "", selectedModel, onModelChange, pinnedModels = [], onPinnedModelsChange }: ServicePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -154,13 +166,19 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
   const [pdfWithImages, setPdfWithImages] = useState(true);
 
   // Numista sync state
-  type NuLog = { type: string; title?: string; fields?: string[]; message?: string };
+  type NuLog = { type: string; title?: string; fields?: string[]; message?: string; query?: string; match?: string };
   const [nuRunning, setNuRunning] = useState(false);
   const [nuProgress, setNuProgress] = useState<{ current: number; total: number } | null>(null);
   const [nuLog, setNuLog] = useState<NuLog[]>([]);
   const [nuDone, setNuDone] = useState<{ updated: number; notFound: number; errors: number } | null>(null);
+  const [nuQuota, setNuQuota] = useState<{ count: number; limit: number; month: string } | null>(null);
   const nuLogRef = useRef<HTMLDivElement>(null);
+  const nuLogDetailRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    fetch("/api/numista-quota").then((r) => r.json()).then(setNuQuota).catch(() => {});
+  }, []);
 
   const handleNumistaSync = (overwrite = false) => {
     if (esRef.current) esRef.current.close();
@@ -174,6 +192,9 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
 
     es.onmessage = (e) => {
       const data = JSON.parse(e.data);
+      if (typeof data.quota === "number") {
+        setNuQuota((prev) => ({ count: data.quota, limit: data.quotaLimit ?? prev?.limit ?? 2000, month: prev?.month ?? "" }));
+      }
       if (data.type === "start") {
         setNuProgress({ current: 0, total: data.total });
       } else if (data.type === "progress") {
@@ -181,7 +202,10 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
       } else if (["updated", "not_found", "no_data", "error"].includes(data.type)) {
         setNuLog((prev) => {
           const next = [...prev, data].slice(-100);
-          setTimeout(() => nuLogRef.current?.scrollTo({ top: 9999, behavior: "smooth" }), 50);
+          setTimeout(() => {
+            nuLogRef.current?.scrollTo({ top: 9999, behavior: "smooth" });
+            nuLogDetailRef.current?.scrollTo({ top: 9999, behavior: "smooth" });
+          }, 50);
           return next;
         });
       } else if (data.type === "done") {
@@ -496,6 +520,22 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
           Пошук по базі Numista (~600 000 монет). Два запити на монету, затримка 400 мс між ними.
         </p>
 
+        {nuQuota && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-[11px] font-mono leading-relaxed ${
+            nuQuota.count >= nuQuota.limit ? "bg-red-500/10 border-red-500/30 text-red-400" :
+            nuQuota.count >= nuQuota.limit * 0.8 ? "bg-amber-500/10 border-amber-500/30 text-amber-400" :
+            "bg-white/5 border-white/10 text-white/40"
+          }`}>
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              План Numista: <strong>{nuQuota.limit.toLocaleString("uk-UA")}</strong> запитів / календарний місяць.
+              Використано цього місяця: <strong>{nuQuota.count.toLocaleString("uk-UA")} / {nuQuota.limit.toLocaleString("uk-UA")}</strong>
+              {" "}({Math.round((nuQuota.count / nuQuota.limit) * 100)}%)
+              {nuQuota.count >= nuQuota.limit && " — ліміт вичерпано, запити повертатимуть помилку до наступного місяця"}
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-2 flex-wrap">
           <button type="button" onClick={() => handleNumistaSync(false)} disabled={nuRunning}
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
@@ -540,24 +580,46 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
 
         {/* Live log */}
         {nuLog.length > 0 && (
-          <div ref={nuLogRef} className="max-h-48 overflow-y-auto bg-black/40 border border-white/5 rounded-xl p-3 space-y-0.5 text-[10px] font-mono">
-            {nuLog.map((entry, i) => (
-              <div key={i} className="flex items-start gap-1.5 leading-relaxed">
-                {entry.type === "updated"   && <CheckCircle  className="h-3 w-3 text-emerald-400 shrink-0 mt-0.5" />}
-                {entry.type === "not_found" && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
-                {entry.type === "no_data"   && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
-                {entry.type === "error"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
-                {entry.type === "fatal"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
-                <span className={
-                  entry.type === "updated"   ? "text-white/70" :
-                  entry.type === "error" || entry.type === "fatal" ? "text-red-400/80" :
-                  "text-white/25"
-                }>
-                  {entry.title || entry.message}
-                  {entry.fields?.length ? ` → ${entry.fields.join(", ")}` : ""}
-                </span>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div ref={nuLogRef} className="max-h-48 overflow-y-auto bg-black/40 border border-white/5 rounded-xl p-3 space-y-0.5 text-[10px] font-mono">
+              {nuLog.map((entry, i) => (
+                <div key={i} className="flex items-start gap-1.5 leading-relaxed">
+                  {entry.type === "updated"   && <CheckCircle  className="h-3 w-3 text-emerald-400 shrink-0 mt-0.5" />}
+                  {entry.type === "not_found" && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
+                  {entry.type === "no_data"   && <AlertCircle  className="h-3 w-3 text-white/25   shrink-0 mt-0.5" />}
+                  {entry.type === "error"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
+                  {entry.type === "fatal"     && <XCircle      className="h-3 w-3 text-red-400     shrink-0 mt-0.5" />}
+                  <span className={
+                    entry.type === "updated"   ? "text-white/70" :
+                    entry.type === "error" || entry.type === "fatal" ? "text-red-400/80" :
+                    "text-white/25"
+                  }>
+                    {entry.title || entry.message}
+                    {entry.fields?.length ? ` → ${entry.fields.map(f => NU_FIELD_UA[f] || f).join(", ")}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Request/result detail log — what was searched and what it resolved to */}
+            <div ref={nuLogDetailRef} className="max-h-48 overflow-y-auto bg-black/40 border border-white/5 rounded-xl p-3 space-y-0.5 text-[10px] font-mono">
+              {nuLog.map((entry, i) => {
+                const status = NU_STATUS_UA[entry.type] || { label: entry.type, cls: "text-white/25" };
+                return (
+                  <div key={i} className="leading-relaxed truncate">
+                    <span className={`font-semibold ${status.cls}`}>[{status.label}]</span>
+                    <span className="text-white/40"> {entry.query || "—"}</span>
+                    {entry.match && <span className="text-white/60"> → {entry.match}</span>}
+                    {entry.type === "updated" && entry.fields?.length ? (
+                      <span className="text-emerald-400/70"> ({entry.fields.map(f => NU_FIELD_UA[f] || f).join(", ")})</span>
+                    ) : null}
+                    {!entry.match && entry.message && (entry.type === "error" || entry.type === "fatal") && (
+                      <span className="text-red-400/70"> → {entry.message}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
