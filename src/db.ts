@@ -35,6 +35,12 @@ const get = <T = any>(sql: string, params: any[] = []): Promise<T | undefined> =
 export const initDb = async (): Promise<void> => {
   await run(`PRAGMA journal_mode=WAL`);
 
+  // An abrupt process kill (e.g. Stop-Process -Force on Windows) skips SQLite's normal
+  // shutdown checkpoint, so the WAL can accumulate unboundedly across restarts — every
+  // fresh connection then has to reconcile a huge WAL before it can read anything, making
+  // the app's first query noticeably slow. Truncate it back into the main file on startup.
+  await run(`PRAGMA wal_checkpoint(TRUNCATE)`);
+
   await run(`
     CREATE TABLE IF NOT EXISTS coins (
       id               TEXT PRIMARY KEY,

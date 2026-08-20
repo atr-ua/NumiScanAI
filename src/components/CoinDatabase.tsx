@@ -12,7 +12,7 @@ import { CATEGORY_COLORS, CATEGORY_NAMES, getCategoryColor, getCategoryName } fr
 import { fixTitleWithYear } from "../utils/coinUtils";
 import { getCountryIsoCode } from "../utils/countryUtils";
 
-type SortPreset = "date" | "country" | "year" | "country_year_denom";
+type SortPreset = "date" | "country" | "year" | "country_year_denom" | "country_denom_year";
 
 interface CoinDatabaseProps {
   coins: Coin[];
@@ -49,7 +49,16 @@ const SORT_PRESETS: { id: SortPreset; label: string }[] = [
   { id: "country",          label: "За країною" },
   { id: "year",             label: "За роком" },
   { id: "country_year_denom", label: "Країна + рік + номінал" },
+  { id: "country_denom_year", label: "Країна + номінал + рік" },
 ];
+
+// Leading numeric value of a denomination string (e.g. "2 гривні" → 2), so "10 гривень"
+// doesn't sort before "2 гривні" as it would under plain string comparison. Non-numeric
+// denominations sort last within their country/denomination group.
+const denomNumber = (d?: string): number => {
+  const m = (d || "").match(/\d+(?:[.,]\d+)?/);
+  return m ? parseFloat(m[0].replace(",", ".")) : Number.POSITIVE_INFINITY;
+};
 
 const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
   const sorted = [...coins];
@@ -68,6 +77,14 @@ const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
         (a.country || "").localeCompare(b.country || "") ||
         Number(a.year || 0) - Number(b.year || 0) ||
         (a.denomination || "").localeCompare(b.denomination || "")
+      );
+      break;
+    case "country_denom_year":
+      sorted.sort((a, b) =>
+        (a.country || "").localeCompare(b.country || "") ||
+        denomNumber(a.denomination) - denomNumber(b.denomination) ||
+        (a.denomination || "").localeCompare(b.denomination || "") ||
+        Number(a.year || 0) - Number(b.year || 0)
       );
       break;
     case "date":
@@ -457,6 +474,21 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
     try {
       await onUpdateCoin(updated);
     } catch {}
+  };
+
+  // Detail/edit modal opens with only the lightweight catalog row (no image bytes) and fetches
+  // the full coin — including raw base64 images — in the background. Until that fetch resolves,
+  // fall back to the same fast per-side binary endpoint the catalog grid and lightbox already
+  // use (driven by hasObverse/hasReverse, which ARE present immediately), instead of showing a
+  // false "image missing" placeholder while data is still on its way.
+  const detailImageSrc = (side: "obverse" | "reverse"): string => {
+    if (!selectedCoin) return "";
+    const editVal = side === "obverse" ? editForm.imageObverse : editForm.imageReverse;
+    if (editVal !== undefined) return editVal; // user explicitly cleared ("") or uploaded a replacement
+    const raw = side === "obverse" ? selectedCoin.imageObverse : selectedCoin.imageReverse;
+    if (raw) return raw;
+    const has = side === "obverse" ? selectedCoin.hasObverse : selectedCoin.hasReverse;
+    return has ? `/api/coins/${selectedCoin.id}/image/${side}?t=${selectedCoin.updatedAt || ""}` : "";
   };
 
   const handleImageSideChange = (e: React.ChangeEvent<HTMLInputElement>, side: "obverse" | "reverse") => {
@@ -868,14 +900,14 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                             />
                           </label>
                         ) : null}
-                        {(editForm.imageObverse || selectedCoin.imageObverse) ? (
+                        {detailImageSrc("obverse") ? (
                           <img
-                            src={editForm.imageObverse || selectedCoin.imageObverse}
+                            src={detailImageSrc("obverse")}
                             alt="Аверс"
                             className={`h-full w-full object-contain p-1 ${!isEditing ? "cursor-zoom-in hover:scale-[1.05] transition-transform duration-300" : ""}`}
                             onClick={() => {
                               if (!isEditing) {
-                                setZoomedImage({ src: editForm.imageObverse || selectedCoin.imageObverse!, title: selectedCoin.title, subtitle: "Аверс (AV)", coinId: selectedCoin.id, side: "obverse", hasObverse: !!(editForm.imageObverse || selectedCoin.imageObverse), hasReverse: !!(editForm.imageReverse || selectedCoin.imageReverse) });
+                                setZoomedImage({ src: detailImageSrc("obverse"), title: selectedCoin.title, subtitle: "Аверс (AV)", coinId: selectedCoin.id, side: "obverse", hasObverse: !!detailImageSrc("obverse"), hasReverse: !!detailImageSrc("reverse") });
                               }
                             }}
                           />
@@ -888,7 +920,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                         <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-black/80 text-white/50 border border-white/10 text-[8px] font-mono rounded select-none z-10">
                           АВЕРС
                         </span>
-                        {isEditing && (editForm.imageObverse || selectedCoin.imageObverse) && (
+                        {isEditing && detailImageSrc("obverse") && (
                           <button
                             type="button"
                             onClick={() => setEditForm((prev) => ({ ...prev, imageObverse: "" }))}
@@ -914,14 +946,14 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                             />
                           </label>
                         ) : null}
-                        {(editForm.imageReverse || selectedCoin.imageReverse) ? (
+                        {detailImageSrc("reverse") ? (
                           <img
-                            src={editForm.imageReverse || selectedCoin.imageReverse}
+                            src={detailImageSrc("reverse")}
                             alt="Реверс"
                             className={`h-full w-full object-contain p-1 ${!isEditing ? "cursor-zoom-in hover:scale-[1.05] transition-transform duration-300" : ""}`}
                             onClick={() => {
                               if (!isEditing) {
-                                setZoomedImage({ src: editForm.imageReverse || selectedCoin.imageReverse!, title: selectedCoin.title, subtitle: "Реверс (RV)", coinId: selectedCoin.id, side: "reverse", hasObverse: !!(editForm.imageObverse || selectedCoin.imageObverse), hasReverse: !!(editForm.imageReverse || selectedCoin.imageReverse) });
+                                setZoomedImage({ src: detailImageSrc("reverse"), title: selectedCoin.title, subtitle: "Реверс (RV)", coinId: selectedCoin.id, side: "reverse", hasObverse: !!detailImageSrc("obverse"), hasReverse: !!detailImageSrc("reverse") });
                               }
                             }}
                           />
@@ -934,7 +966,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                         <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-black/80 text-white/50 border border-white/10 text-[8px] font-mono rounded select-none z-10">
                           РЕВЕРС
                         </span>
-                        {isEditing && (editForm.imageReverse || selectedCoin.imageReverse) && (
+                        {isEditing && detailImageSrc("reverse") && (
                           <button
                             type="button"
                             onClick={() => setEditForm((prev) => ({ ...prev, imageReverse: "" }))}

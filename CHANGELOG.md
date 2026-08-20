@@ -6,6 +6,46 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Numista quota tracking** — live counter/warning banner for the plan's 2000 requests/calendar-month limit, backed by a new `/api/numista-quota` endpoint
+- **Numista sync log split into two columns** — coin list (unchanged) alongside a request/result detail log showing the search query, resolved issuer code, matched Numista type, and outcome (updated / no change / not found / error)
+- **New sort preset "Country + denomination + year"** — groups a country's coins by denomination first, then by year within each denomination; denomination comparison is now numeric-aware so "10" no longer sorts before "2"
+- **Historical SVG flags** for coins minted under defunct states — 18 bundled flags (USSR, Third Reich, Austria-Hungary, Rhodesia across its three eras, Federation of Malaya, Ceylon, United Arab Republic, Zaire, Mongolian People's Republic, Artsakh, Somaliland, and more) instead of falling back to a modern successor state's flag or a generic emoji; sourced from Wikimedia Commons, licenses documented in `docs/FLAG_ATTRIBUTIONS.md`
+
+### Changed
+- **Numista search query** now built from the bare denomination number + year instead of a translated currency name, avoiding mistranslation mismatches (e.g. Ethiopia's "santim" → "centimes"); issuer/country is resolved via Numista's own `/issuers` list instead of a guessed slug
+- Starting a new Numista sync now cancels any previous run still looping in the background instead of stacking concurrent runs against the same monthly quota
+
+### Fixed
+- **Numista sync kept running after disconnect** — the server-side loop had no way to detect the client stopping (Stop button, page navigation) and would keep burning API quota in the background, invisibly; now aborts via `req.on("close")` plus a single-active-run guard
+- **Coin detail/edit modal briefly showed "image missing"** while the full per-coin fetch was still in flight; now falls back to the same fast per-side image endpoint the catalog grid and lightbox already use, instead of waiting on the raw base64 payload
+- **Taiwan / Republic of China coins showed mainland China's flag** — "Китайська Республіка" matched the generic China check before the Taiwan-specific one
+- **First coin-list load was slow** after repeated forced server restarts left SQLite's WAL file growing unbounded (observed ~1 GB); now checkpointed on every startup
+
+### Technical
+- New `app_settings` key-value table for persisting the Numista quota counter across restarts
+- New `src/utils/historicalFlags.ts` module, checked first in `CountryFlag` before the modern ISO-code/emoji lookup
+
+### Додано
+- **Відстеження квоти Numista** — лічильник і попередження про ліміт плану (2000 запитів/календарний місяць), новий ендпоінт `/api/numista-quota`
+- **Лог синхронізації з Numista розділено на дві колонки** — список монет (без змін) поряд з деталями запиту/результату: пошуковий запит, визначений код країни, знайдений тип Numista, результат (оновлено / без змін / не знайдено / помилка)
+- **Новий вид сортування «Країна + номінал + рік»** — групує монети країни спершу за номіналом, потім за роком усередині номіналу; порівняння номіналу тепер числове, тому «10» більше не сортується перед «2»
+- **Історичні SVG-прапори** для монет зниклих держав — 18 вбудованих прапорів (СРСР, Третій Рейх, Австро-Угорщина, Родезія в трьох епохах, Федерація Малайя, Цейлон, Об'єднана Арабська Республіка, Заїр, Монгольська Народна Республіка, Нагірно-Карабаська Республіка, Сомаліленд та інші) замість прапора сучасної країни-наступниці чи узагальненого emoji; джерело — Wikimedia Commons, ліцензії задокументовано в `docs/FLAG_ATTRIBUTIONS.md`
+
+### Змінено
+- **Пошуковий запит до Numista** тепер будується з голого числа номіналу + року замість перекладеної назви валюти — уникає помилок перекладу (напр. ефіопський «santim» → «centimes»); країна/емітент визначається через власний список `/issuers` Numista замість вгаданого слага
+- Запуск нової синхронізації з Numista тепер скасовує попередній цикл, що ще міг працювати у фоні, замість накопичення паралельних циклів на одній квоті
+
+### Виправлено
+- **Синхронізація з Numista продовжувала працювати після відключення** — серверний цикл не мав способу дізнатись про відключення клієнта (кнопка «Зупинити», перехід на іншу сторінку) і непомітно витрачав квоту API далі; тепер зупиняється через `req.on("close")` і захист «лише один активний запуск»
+- **Картка/форма редагування монети на кілька секунд показувала «зображення відсутнє»**, поки фонове довантаження повних даних монети ще тривало; тепер використовує той самий швидкий URL-ендпоінт зображення, що й каталог і лайтбокс, замість очікування на base64-дані
+- **Монети Тайваню/Китайської Республіки показували прапор материкового Китаю** — рядок «Китайська Республіка» ловився загальною перевіркою Китаю раніше за перевірку Тайваню
+- **Перше завантаження списку монет ставало повільним** після кількох примусових перезапусків сервера, які лишали WAL-файл SQLite необмежено зростати (спостерігався ~1 ГБ); тепер стискається при кожному старті сервера
+
+### Технічне
+- Нова таблиця `app_settings` (ключ-значення) для збереження лічильника квоти Numista між перезапусками
+- Новий модуль `src/utils/historicalFlags.ts`, перевіряється першим у `CountryFlag` до звичайного ISO-коду/emoji
+
 ---
 
 ## [1.4.0] — 2026-07-27

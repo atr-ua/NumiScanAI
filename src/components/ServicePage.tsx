@@ -498,9 +498,12 @@ export default function ServicePage({ apiPort = 3001, catalogCoins = [], filterD
       </div>
 
       {/* Footer */}
-      <div className="border-t border-white/5 pt-4 flex items-center justify-end">
+      <div className="border-t border-white/5 pt-4 flex flex-col items-end gap-1">
         <span className="text-[10px] font-mono text-white/20">
           © Andrii (ATR) Tarasenko · Apache 2.0
+        </span>
+        <span className="text-[9px] font-mono text-white/15" title="Атрибуція історичних прапорів — docs/FLAG_ATTRIBUTIONS.md">
+          Історичні прапори: Wikimedia Commons (CC BY-SA)
         </span>
       </div>
 

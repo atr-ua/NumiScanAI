@@ -6,6 +6,7 @@
 
 import React, { useState } from "react";
 import { getCountryIsoCode, getCountryFlag } from "../utils/countryUtils";
+import { getHistoricalFlagAsset } from "../utils/historicalFlags";
 
 interface CountryFlagProps {
   country: string;
@@ -21,9 +22,26 @@ export default function CountryFlag({
   fallbackSizeClass = "text-xs",
 }: CountryFlagProps) {
   const [hasError, setHasError] = useState(false);
+  const [historicalError, setHistoricalError] = useState(false);
   const lower = (country || "").toLowerCase().trim();
   const code = getCountryIsoCode(country);
   const emoji = getCountryFlag(country);
+
+  // Defunct states (СРСР, Третій Рейх, Родезія, Малайя, …): dedicated bundled SVG,
+  // takes priority over the modern-country ISO/emoji lookup below.
+  const historical = getHistoricalFlagAsset(country);
+  if (historical && !historicalError) {
+    return (
+      <img
+        src={historical.src}
+        alt={country}
+        title={historical.label}
+        className={`${className} border border-white/10`}
+        onError={() => setHistoricalError(true)}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
 
   // Libya: Gaddafi-era all-green flag (1969–2011)
   const isLibya = lower.includes("лівій") || lower.includes("libya");

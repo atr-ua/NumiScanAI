@@ -130,11 +130,14 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("тур") || lower.includes("turkey") || lower.includes("turkish")) return "tr";
 
   // ── East Asia ─────────────────────────────────────────────────────────────
+  // Taiwan / Republic of China (must precede the generic China check — "Китайська
+  // Республіка" also contains "кита"). ROC's flag is unchanged since 1928, same as
+  // modern Taiwan's, so this always resolves to "tw", not a bundled historical asset.
+  if (lower.includes("тайван") || lower.includes("taiwan") || lower.includes("китайська республік") || lower.includes("republic of china")) return "tw";
   if (lower.includes("кита") || lower.includes("china")) return "cn";
   if (lower.includes("япон") || lower.includes("japan")) return "jp";
   if (lower.includes("монгол") || lower.includes("mongol")) return "mn";
   if (lower.includes("кндр") || lower.includes("north korea") || lower.includes("пн. коре") || lower.includes("північ") && lower.includes("коре")) return "kp";
-  if (lower.includes("тайван") || lower.includes("taiwan")) return "tw";
   if (lower.includes("коре") || lower.includes("korea")) return "kr";
 
   // ── Southeast Asia ────────────────────────────────────────────────────────
@@ -404,11 +407,11 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("рим") || lower.includes("roman") || lower.includes("антич") || lower.includes("ancient") || lower.includes("візант") || lower.includes("byzant") || lower.includes("визант")) return "🏛️";
 
   // ── East Asia ─────────────────────────────────────────────────────────────
+  if (lower.includes("тайван") || lower.includes("taiwan") || lower.includes("китайська республік") || lower.includes("republic of china")) return "🇹🇼";
   if (lower.includes("кита") || lower.includes("china")) return "🇨🇳";
   if (lower.includes("япон") || lower.includes("japan")) return "🇯🇵";
   if (lower.includes("монгол") || lower.includes("mongol")) return "🇲🇳";
   if (lower.includes("кндр") || lower.includes("north korea") || lower.includes("пн. коре") || lower.includes("північ") && lower.includes("коре")) return "🇰🇵";
-  if (lower.includes("тайван") || lower.includes("taiwan")) return "🇹🇼";
   if (lower.includes("коре") || lower.includes("korea")) return "🇰🇷";
 
   // ── Southeast Asia ────────────────────────────────────────────────────────
