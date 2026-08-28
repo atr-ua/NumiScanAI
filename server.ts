@@ -241,27 +241,36 @@ app.get("/api/gemini-models", async (_req, res) => {
 
 // Shared prompt builders for coin recognition (used by both Gemini and OpenAI)
 const COIN_JSON_FIELDS = `{
+  "visualEvidence": "СПОЧАТКУ заповни це поле. Опиши лише те, що РЕАЛЬНО видно на монеті: легенда аверсу дослівно (оригінальний напис + транслітерація/переклад), легенда реверсу дослівно, дата так, як вона зображена, знак монетного двору, портрет/герб/головний малюнок аверсу й реверсу, мова та абетка написів. Це твої спостереження, а не дані з каталогу.",
   "title": "Назва монети, напр. '2 гривні (2018)'",
   "denomination": "Номінал, напр. '2 гривні'",
   "country": "Країна, напр. 'Україна'",
-  "year": "Рік карбування або 'Невідомо'",
+  "year": "Рік карбування або 'Невідомо' (не вгадуй, якщо дата не читається)",
   "metal": "Метал/сплав, напр. 'Нейзильбер'",
-  "weight": "Вага, напр. '4.0 г'",
-  "diameter": "Діаметр, напр. '22.0 мм'",
-  "estimatedValue": "Ринкова вартість у UAH, напр. '10–50 грн'",
-  "mintage": "Тираж, напр. '1 000 000 шт' або 'Невідомо'",
-  "thickness": "Товщина, напр. '1.8 мм' або 'Невідомо'",
-  "edge": "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'/'комбінований'",
-  "rarity": "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна'",
-  "grade": "'VF'/'XF'/'UNC'",
-  "historicalContext": "Розгорнутий нумізматичний опис українською мовою (мінімум 4–6 речень). Обов'язково охопити: (1) історичний та політичний контекст випуску монети — епоха, держава, правитель або подія; (2) детальний опис зображень — хто або що зображено на аверсі й реверсі, символіка гербів, написів, орнаментів; (3) обставини карбування — чи є монета обіговою, ювілейною, пам'ятною, пробною; серія якщо є; (4) нумізматична цікавість — відомі різновиди, помилки карбування, особливості тиражу, причини колекційного попиту; (5) сучасна колекційна цінність і де монета зустрічається.",
+  "weight": "Вага з каталогу, напр. '4.0 г', або 'Невідомо', якщо тип монети не встановлено впевнено",
+  "diameter": "Діаметр з каталогу, напр. '22.0 мм', або 'Невідомо', якщо тип монети не встановлено впевнено",
+  "estimatedValue": "Ринкова вартість у UAH, напр. '10–50 грн', або 'Невідомо', якщо тип монети не встановлено впевнено",
+  "mintage": "Тираж з каталогу, напр. '1 000 000 шт', або 'Невідомо'",
+  "thickness": "Товщина з каталогу, напр. '1.8 мм', або 'Невідомо'",
+  "edge": "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'/'комбінований' або 'Невідомо'",
+  "rarity": "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна' або 'Не визначено' (орієнтовно)",
+  "grade": "'VF'/'XF'/'UNC' або 'Не визначено', якщо стан оцінити неможливо (орієнтовно)",
+  "historicalContext": "Нумізматичний опис українською мовою. ЯКЩО тип монети впевнено визначено — 4–6 речень, що охоплюють: (1) історичний та політичний контекст випуску — епоха, держава, правитель або подія; (2) детальний опис зображень аверсу й реверсу, символіка гербів, написів, орнаментів; (3) обставини карбування — обігова, ювілейна, пам'ятна, пробна; серія якщо є; (4) відомі різновиди, помилки карбування, особливості тиражу, причини колекційного попиту; (5) сучасна колекційна цінність. ЯКЩО монету впевнено не визначено — 1–2 речення лише про те, що реально видно, без домислів.",
   "imagesSwapped": "true якщо перше фото — реверс, false — інакше"
 }`;
 
+const COIN_ACCURACY_RULES = `Правила якості даних (дотримуйся суворо):
+- Спочатку заповни visualEvidence: дослівно прочитай усі написи, дату та знак монетного двору — і лише потім визначай монету.
+- Чітко розділяй те, що ВИДНО на монеті (країна, номінал, рік, легенди, знак д/в), і те, що береться З КАТАЛОГУ (weight, diameter, thickness, mintage, estimatedValue).
+- Якщо тип монети не встановлено впевнено — постав "Невідомо" в полях weight, diameter, thickness, mintage, estimatedValue. НІКОЛИ не підставляй правдоподібні числа замість справжніх даних каталогу.
+- Якщо рік не читається — "Невідомо". Не вгадуй.
+- grade і rarity орієнтовні; якщо стан чи рідкість оцінити неможливо — "Не визначено".
+- Краще коротший historicalContext, ніж вигадані факти. Пиши лише те, що справді відомо про цей тип монети.`;
+
 const buildCoinSystemPrompt = (isRefinement: boolean) =>
   isRefinement
-    ? `You are an expert world coin analyst and professional numismatist with deep knowledge of NGC, PCGS, Krause Standard Catalog, and national mint records. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, historical context). For historicalContext write a rich, detailed paragraph (minimum 4–6 sentences) covering historical background, imagery description, minting circumstances, and collector significance. Respond with structured JSON only, matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`
-    : `You are an expert world coin analyst and professional numismatist with encyclopedic knowledge of world coinage across all eras and countries. You have access to NGC, PCGS, Krause Standard Catalog of World Coins, and national mint databases. Identify the coin from the provided image(s) with maximum precision. For the historicalContext field, write a rich, detailed description of minimum 4–6 sentences covering: the historical and political context of issuance, a thorough description of the obverse and reverse imagery and symbolism, whether the coin is circulating or commemorative, any notable varieties or minting peculiarities, and its current collector significance. Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\nAll text fields must be in Ukrainian.`;
+    ? `You are an expert world coin analyst and professional numismatist with deep knowledge of NGC, PCGS, Krause Standard Catalog, and national mint records. The user has provided a correction to your previous coin identification. Update the coin data based on this correction, re-deriving all dependent fields (geometry, value, rarity, historical context). For historicalContext write a detailed paragraph (4–6 sentences when the coin type is confidently identified, otherwise 1–2 sentences with no speculation) covering historical background, imagery description, minting circumstances, and collector significance. Respond with structured JSON only, matching this schema:\n${COIN_JSON_FIELDS}\n${COIN_ACCURACY_RULES}\nAll text fields must be in Ukrainian.`
+    : `You are an expert world coin analyst and professional numismatist with encyclopedic knowledge of world coinage across all eras and countries. You have access to NGC, PCGS, Krause Standard Catalog of World Coins, and national mint databases. Identify the coin from the provided image(s) with maximum precision. Fill visualEvidence first — transcribe the legends, date and mint mark verbatim — then identify the coin. For the historicalContext field, write 4–6 sentences when the coin type is confidently identified, otherwise 1–2 sentences describing only what is visible, with no speculation; when detailed, cover the historical and political context of issuance, a thorough description of the obverse and reverse imagery and symbolism, whether the coin is circulating or commemorative, any notable varieties or minting peculiarities, and its current collector significance. Respond with ONLY a valid JSON object matching this schema:\n${COIN_JSON_FIELDS}\n${COIN_ACCURACY_RULES}\nAll text fields must be in Ukrainian.`;
 
 const COIN_VISUAL_HINTS = `Examine carefully: country name, denomination value, year of minting, ruler portrait or national emblem, mint mark, inscription language and script, edge design, and any special commemorative text. Cross-reference both sides to confirm identification. If ambiguous, choose the most likely candidate based on numismatic visual elements.`;
 
@@ -435,23 +444,24 @@ app.post("/api/recognize-coin", async (req, res) => {
       const coinSchema = {
         type: "object",
         properties: {
+          visualEvidence:  { type: "string", description: "СПОЧАТКУ: дослівні легенди аверсу й реверсу (оригінал + переклад), дата як зображена, знак монетного двору, опис малюнків аверсу/реверсу. Лише спостереження, не дані з каталогу." },
           title:           { type: "string", description: "Назва монети, напр. '2 гривні (2018)'" },
           denomination:    { type: "string", description: "Номінал, напр. '2 гривні'" },
           country:         { type: "string", description: "Країна походження українською, напр. 'Україна'" },
-          year:            { type: "string", description: "Рік карбування або 'Невідомо'" },
+          year:            { type: "string", description: "Рік карбування або 'Невідомо' (не вгадувати)" },
           metal:           { type: "string", description: "Метал/сплав українською, напр. 'Нейзильбер'" },
-          weight:          { type: "string", description: "Вага, напр. '4.0 г'" },
-          diameter:        { type: "string", description: "Діаметр, напр. '22.0 мм'" },
-          estimatedValue:  { type: "string", description: "Ринкова вартість у UAH, напр. '10–50 грн'" },
-          mintage:         { type: "string", description: "Тираж, напр. '1 000 000 шт' або 'Невідомо'" },
-          thickness:       { type: "string", description: "Товщина, напр. '1.8 мм' або 'Невідомо'" },
-          edge:            { type: "string", description: "Гурт: 'гладкий'/'рифлений'/'написовий'/'сегментований'" },
-          rarity:          { type: "string", description: "'Звичайна'/'Нечаста'/'Рідкісна'/'Колекційна'" },
-          grade:           { type: "string", description: "'VF'/'XF'/'UNC'" },
+          weight:          { type: "string", description: "Вага з каталогу, напр. '4.0 г', або 'Невідомо' якщо тип не встановлено впевнено" },
+          diameter:        { type: "string", description: "Діаметр з каталогу, напр. '22.0 мм', або 'Невідомо' якщо тип не встановлено впевнено" },
+          estimatedValue:  { type: "string", description: "Ринкова вартість у UAH, напр. '10–50 грн', або 'Невідомо' якщо тип не встановлено впевнено" },
+          mintage:         { type: "string", description: "Тираж з каталогу, напр. '1 000 000 шт', або 'Невідомо'" },
+          thickness:       { type: "string", description: "Товщина з каталогу, напр. '1.8 мм', або 'Невідомо'" },
+          edge:            { type: "string", enum: ["гладкий", "рифлений", "написовий", "сегментований", "комбінований", "Невідомо"], description: "Гурт" },
+          rarity:          { type: "string", enum: ["Звичайна", "Нечаста", "Рідкісна", "Колекційна", "Не визначено"], description: "Рідкість (орієнтовно)" },
+          grade:           { type: "string", enum: ["VF", "XF", "UNC", "Не визначено"], description: "Стан збереження (орієнтовно; 'Не визначено' якщо оцінити неможливо)" },
           historicalContext: { type: "string", description: "Опис монети, символіки — українською мовою" },
           imagesSwapped:   { type: "boolean", description: "true якщо перше фото є реверсом" },
         },
-        required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "mintage", "thickness", "edge", "rarity", "grade", "historicalContext", "imagesSwapped"],
+        required: ["visualEvidence", "title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "mintage", "thickness", "edge", "rarity", "grade", "historicalContext", "imagesSwapped"],
         additionalProperties: false,
       };
 
@@ -465,6 +475,8 @@ app.post("/api/recognize-coin", async (req, res) => {
           type: "json_schema",
           json_schema: { name: "coin_identification", strict: true, schema: coinSchema },
         },
+        // gpt-4* accept a custom temperature; gpt-5.x / o-series only run at default — omit there
+        temperature: /^gpt-4/.test(modelName) ? 0 : undefined,
         max_tokens: 2500,
       });
 
@@ -505,10 +517,12 @@ app.post("/api/recognize-coin", async (req, res) => {
       contents: { parts: [...imageParts, textPart] },
       config: {
         systemInstruction: buildCoinSystemPrompt(isRefinement),
+        temperature: 0,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
+            visualEvidence: { type: Type.STRING },
             title:          { type: Type.STRING },
             denomination:   { type: Type.STRING },
             country:        { type: Type.STRING },
@@ -519,13 +533,13 @@ app.post("/api/recognize-coin", async (req, res) => {
             estimatedValue: { type: Type.STRING },
             mintage:        { type: Type.STRING },
             thickness:      { type: Type.STRING },
-            edge:           { type: Type.STRING },
-            rarity:         { type: Type.STRING },
-            grade:          { type: Type.STRING },
+            edge:           { type: Type.STRING, enum: ["гладкий", "рифлений", "написовий", "сегментований", "комбінований", "Невідомо"] },
+            rarity:         { type: Type.STRING, enum: ["Звичайна", "Нечаста", "Рідкісна", "Колекційна", "Не визначено"] },
+            grade:          { type: Type.STRING, enum: ["VF", "XF", "UNC", "Не визначено"] },
             historicalContext: { type: Type.STRING },
             imagesSwapped:  { type: Type.BOOLEAN },
           },
-          required: ["title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext"],
+          required: ["visualEvidence", "title", "denomination", "country", "year", "metal", "weight", "diameter", "estimatedValue", "rarity", "grade", "historicalContext"],
         },
       },
     });
