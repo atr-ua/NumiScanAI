@@ -26,6 +26,15 @@ Creative Commons Attribution-ShareAlike і потребують атрибуці
 | `mongolia-mpr.svg` | [File:Flag of the Mongolian People's Republic (1945–1992).svg](https://commons.wikimedia.org/wiki/File:Flag_of_the_Mongolian_People's_Republic_(1945%E2%80%931992).svg) | Public Domain |
 | `artsakh.svg` | [File:Flag of Artsakh.svg](https://commons.wikimedia.org/wiki/File:Flag_of_Artsakh.svg) | Public Domain |
 | `somaliland.svg` | [File:Flag of Somaliland.svg](https://commons.wikimedia.org/wiki/File:Flag_of_Somaliland.svg) | Public Domain |
+| `kingdom-italy.svg` | [File:Flag of Italy (1861–1946).svg](https://commons.wikimedia.org/wiki/File:Flag_of_Italy_(1861%E2%80%931946).svg) | Public Domain / CC BY-SA 2.5 (dual) |
+
+## Інші прапори поза `historical/`
+
+`public/flags/eastern-caribbean.svg` — емблема Організації східнокарибських держав
+(OECS), затверджена 21.06.2006 (оригінал розроблений Present Image Design Ltd,
+Сент-Люсія). Це не завантажений файл, а власна векторна реконструкція за офіційним
+описом та еталонним зображенням (зелене коло, темно-синьо-золоте кільце, 8-променева
+зірка з жовтогарячим диском) — оригінальна робота, авторське право не переносилось.
 
 Кілька історичних записів у колекції навмисно НЕ отримали окремого файлу — їхній
 прапор фактично не відрізнявся від прапора сучасної країни-наступниці (перевірено

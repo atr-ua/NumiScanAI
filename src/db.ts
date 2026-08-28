@@ -7,6 +7,7 @@
 import sqlite3 from "sqlite3";
 import path from "path";
 import fs from "fs";
+import { normalizeCountryName } from "./utils/normalizeCountryName.js";
 
 const DB_PATH = path.join(process.cwd(), "coins.db");
 const LEGACY_JSON = path.join(process.cwd(), "src", "coins-data.json");
@@ -219,6 +220,7 @@ export const dbGetCoin = (id: string): Promise<any> =>
 
 /** Insert or update a coin (full data including images). */
 export const dbSaveCoin = async (c: any): Promise<any> => {
+  c.country = normalizeCountryName(c.country, c.year);
   const now = new Date().toISOString();
   if (!c.id) {
     c.id = `coin-${Date.now()}`;

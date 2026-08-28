@@ -6,11 +6,19 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+---
+
+## [1.5.0] — 2026-08-28
+
 ### Added
 - **Numista quota tracking** — live counter/warning banner for the plan's 2000 requests/calendar-month limit, backed by a new `/api/numista-quota` endpoint
 - **Numista sync log split into two columns** — coin list (unchanged) alongside a request/result detail log showing the search query, resolved issuer code, matched Numista type, and outcome (updated / no change / not found / error)
 - **New sort preset "Country + denomination + year"** — groups a country's coins by denomination first, then by year within each denomination; denomination comparison is now numeric-aware so "10" no longer sorts before "2"
 - **Historical SVG flags** for coins minted under defunct states — 18 bundled flags (USSR, Third Reich, Austria-Hungary, Rhodesia across its three eras, Federation of Malaya, Ceylon, United Arab Republic, Zaire, Mongolian People's Republic, Artsakh, Somaliland, and more) instead of falling back to a modern successor state's flag or a generic emoji; sourced from Wikimedia Commons, licenses documented in `docs/FLAG_ATTRIBUTIONS.md`
+- **Eastern Caribbean States (OECS) flag** — hand-vectorized reproduction of the OECS emblem (adopted 2006), for coins denominated in East Caribbean dollars
+- **Kingdom of Italy (1861–1946) historical flag** — tricolor with the House of Savoy crest, distinct from the modern Republic's plain tricolor
+- **Year-based historical flag fallback**, generalizing the existing Libya mechanism to Italy and Germany: a coin whose country field just says "Italy" or "Germany" (without an explicit historical qualifier) now gets the period-correct flag — Kingdom of Italy for 1861–1945, Third Reich for 1933–1945, German Empire for 1871–1918 — based on the mint year alone
+- **Country-name normalization on save** (`src/utils/normalizeCountryName.ts`) — collapses free-form historical-period country names onto one canonical spelling per entity (e.g. every East Germany variant now becomes "НДР (Німецька Демократична Республіка)") before writing to the database, so future recognitions stop splintering into new spellings
 
 ### Changed
 - **Numista search query** now built from the bare denomination number + year instead of a translated currency name, avoiding mistranslation mismatches (e.g. Ethiopia's "santim" → "centimes"); issuer/country is resolved via Numista's own `/issuers` list instead of a guessed slug
@@ -21,16 +29,26 @@ All notable changes to this project are documented here.
 - **Coin detail/edit modal briefly showed "image missing"** while the full per-coin fetch was still in flight; now falls back to the same fast per-side image endpoint the catalog grid and lightbox already use, instead of waiting on the raw base64 payload
 - **Taiwan / Republic of China coins showed mainland China's flag** — "Китайська Республіка" matched the generic China check before the Taiwan-specific one
 - **First coin-list load was slow** after repeated forced server restarts left SQLite's WAL file growing unbounded (observed ~1 GB); now checkpointed on every startup
+- **Nagorno-Karabakh flag never matched** — the rule checked for the substring "карабах", but the collection's actual label is "Нагірно-**Карабаська** Республіка" (adjectival form, no "х"); now matches on the shared root "караба"
+- **Guyana flag never matched** — the rule checked for "гайан", but the common Ukrainian spelling is "Гаяна" (no "й"); both spellings now resolve to the flag
+- **Eastern Caribbean States flag didn't match the hyphenated spelling** "Східно-Карибські" actually used in coin data — the rule only checked the unhyphenated "східнокариб"
+- **Several East Germany (GDR) name variants didn't resolve to the GDR flag** — e.g. "Німеччина (НДР)" and "НДР (Східна Німеччина)" — the rule required either an exact "ндр" match or the phrase "німецька демократична" and missed these; broadened to a plain "ндр" substring check
 
 ### Technical
 - New `app_settings` key-value table for persisting the Numista quota counter across restarts
 - New `src/utils/historicalFlags.ts` module, checked first in `CountryFlag` before the modern ISO-code/emoji lookup
+- One-time backfill applied the new country-name normalization rules to 53 existing coin records with fragmented historical-period naming (Kingdom of Italy, Third Reich, German Empire, GDR, FRG, Ceylon, Nagorno-Karabakh)
+- `docs/FLAG_ATTRIBUTIONS.md` updated with the Kingdom of Italy source (Wikimedia Commons, Public Domain/CC BY-SA 2.5) and a note on the custom-drawn OECS flag (original work, not from Commons)
 
 ### Додано
 - **Відстеження квоти Numista** — лічильник і попередження про ліміт плану (2000 запитів/календарний місяць), новий ендпоінт `/api/numista-quota`
 - **Лог синхронізації з Numista розділено на дві колонки** — список монет (без змін) поряд з деталями запиту/результату: пошуковий запит, визначений код країни, знайдений тип Numista, результат (оновлено / без змін / не знайдено / помилка)
 - **Новий вид сортування «Країна + номінал + рік»** — групує монети країни спершу за номіналом, потім за роком усередині номіналу; порівняння номіналу тепер числове, тому «10» більше не сортується перед «2»
 - **Історичні SVG-прапори** для монет зниклих держав — 18 вбудованих прапорів (СРСР, Третій Рейх, Австро-Угорщина, Родезія в трьох епохах, Федерація Малайя, Цейлон, Об'єднана Арабська Республіка, Заїр, Монгольська Народна Республіка, Нагірно-Карабаська Республіка, Сомаліленд та інші) замість прапора сучасної країни-наступниці чи узагальненого emoji; джерело — Wikimedia Commons, ліцензії задокументовано в `docs/FLAG_ATTRIBUTIONS.md`
+- **Прапор Східнокарибських держав (OECS)** — власна векторна реконструкція емблеми OECS (затверджена 2006 р.) для монет у східнокарибських доларах
+- **Історичний прапор Королівства Італія (1861–1946)** — триколор з гербом Савойського дому, на відміну від простого триколору сучасної Республіки
+- **Визначення історичного прапора за роком карбування**, узагальнено з наявного механізму для Лівії на Італію та Німеччину: монета, у якої країна вказана просто як «Італія» чи «Німеччина» без явного історичного уточнення, тепер отримує прапор відповідного періоду — Королівство Італія для 1861–1945, Третій Рейх для 1933–1945, Німецька імперія для 1871–1918 — лише за роком карбування
+- **Нормалізація назви країни при збереженні** (`src/utils/normalizeCountryName.ts`) — довільні написання назв країн історичних періодів зводяться до однієї канонічної форми (напр. усі варіанти НДР стають «НДР (Німецька Демократична Республіка)») перед записом у базу, тож нові розпізнавання більше не плодять нових варіантів написання
 
 ### Змінено
 - **Пошуковий запит до Numista** тепер будується з голого числа номіналу + року замість перекладеної назви валюти — уникає помилок перекладу (напр. ефіопський «santim» → «centimes»); країна/емітент визначається через власний список `/issuers` Numista замість вгаданого слага
@@ -41,10 +59,16 @@ All notable changes to this project are documented here.
 - **Картка/форма редагування монети на кілька секунд показувала «зображення відсутнє»**, поки фонове довантаження повних даних монети ще тривало; тепер використовує той самий швидкий URL-ендпоінт зображення, що й каталог і лайтбокс, замість очікування на base64-дані
 - **Монети Тайваню/Китайської Республіки показували прапор материкового Китаю** — рядок «Китайська Республіка» ловився загальною перевіркою Китаю раніше за перевірку Тайваню
 - **Перше завантаження списку монет ставало повільним** після кількох примусових перезапусків сервера, які лишали WAL-файл SQLite необмежено зростати (спостерігався ~1 ГБ); тепер стискається при кожному старті сервера
+- **Прапор Нагірного Карабаху ніколи не спрацьовував** — правило шукало підрядок «карабах», а фактична назва в колекції — «Нагірно-**Карабаська** Республіка» (прикметникова форма, без «х»); тепер збіг перевіряється за спільним коренем «караба»
+- **Прапор Гаяни ніколи не спрацьовував** — правило шукало «гайан», а поширене українське написання — «Гаяна» (без «й»); тепер розпізнаються обидва варіанти
+- **Прапор Східнокарибських держав не збігався з дефісним написанням** «Східно-Карибські», яке фактично використовується в даних монет — правило перевіряло лише написання без дефіса
+- **Кілька варіантів написання НДР не розпізнавались** — напр. «Німеччина (НДР)» і «НДР (Східна Німеччина)»: правило вимагало або точний збіг «ндр», або фразу «німецька демократична» і пропускало ці випадки; розширено до перевірки підрядка «ндр»
 
 ### Технічне
 - Нова таблиця `app_settings` (ключ-значення) для збереження лічильника квоти Numista між перезапусками
 - Новий модуль `src/utils/historicalFlags.ts`, перевіряється першим у `CountryFlag` до звичайного ISO-коду/emoji
+- Одноразове застосування нових правил нормалізації до 53 наявних записів монет з роздробленими історичними назвами (Королівство Італія, Третій Рейх, Німецька імперія, НДР, ФРН, Цейлон, Нагірний Карабах)
+- `docs/FLAG_ATTRIBUTIONS.md` доповнено джерелом прапора Королівства Італія (Wikimedia Commons, Public Domain/CC BY-SA 2.5) та приміткою про власноруч намальований прапор OECS (оригінальна робота, не з Commons)
 
 ---
 

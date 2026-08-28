@@ -14,6 +14,11 @@
  * CountryFlag.tsx, none of these need a year range — the AI/user already write a different
  * `country` string for the historical entity than for the modern one).
  *
+ * Also doubles as the override point for currently-active entities that have no ISO
+ * alpha-2 code of their own (so countryUtils.ts / flagcdn have nothing to look up), e.g.
+ * the Eastern Caribbean States (OECS) — a currency union, not a defunct government, but
+ * routed through this same "bundled SVG" mechanism for lack of a better place.
+ *
  * Sources & licenses: see docs/FLAG_ATTRIBUTIONS.md. Most files are Public Domain;
  * malaya.svg (CC BY-SA 2.5) and uar.svg (CC BY-SA 3.0/GFDL) require attribution, given there.
  */
@@ -68,7 +73,9 @@ const HISTORICAL_FLAGS: HistoricalFlag[] = [
     label: "Німецька імперія (1871–1918)",
   },
   {
-    test: (l) => l === "ндр" || l.includes("німецька демократична") || l.includes("ddr") || l.includes("east germ"),
+    // "ндр" як підрядок (не лише l === "ндр") ловить "Німеччина (НДР)", "НДР (Східна
+    // Німеччина)" тощо — варіанти написання, знайдені в реальних даних колекції.
+    test: (l) => l.includes("ндр") || l.includes("німецька демократична") || l.includes("ddr") || l.includes("east germ"),
     src: "/flags/historical/east-germany.svg",
     label: "Німецька Демократична Республіка",
   },
@@ -108,7 +115,9 @@ const HISTORICAL_FLAGS: HistoricalFlag[] = [
     label: "Об'єднана Арабська Республіка (1958–1971)",
   },
   {
-    test: (l) => (l.includes("нагірн") && l.includes("карабах")) || l.includes("арцах") || l.includes("artsakh"),
+    // "карабах" (Нагірний Карабах) і "карабаська" (Нагірно-Карабаська Республіка) різняться
+    // після спільного кореня "караба" — перевіряємо саме його, а не повне слово "карабах".
+    test: (l) => (l.includes("нагірн") && l.includes("караба")) || l.includes("арцах") || l.includes("artsakh"),
     src: "/flags/historical/artsakh.svg",
     label: "Нагірно-Карабаська Республіка (Арцах)",
   },
@@ -116,6 +125,21 @@ const HISTORICAL_FLAGS: HistoricalFlag[] = [
     test: (l) => l.includes("сомалілен") || l.includes("somaliland"),
     src: "/flags/historical/somaliland.svg",
     label: "Сомаліленд",
+  },
+  {
+    // Триколор із гербом Савойського дому в білій смузі — на відміну від сучасного
+    // прапора Італії (Республіки), який герба не має.
+    test: (l) => (l.includes("королівств") && l.includes("італ")) || l.includes("kingdom of italy"),
+    src: "/flags/historical/kingdom-italy.svg",
+    label: "Королівство Італія (1861–1946)",
+  },
+  {
+    // "східнокариб" ловить "Східнокарибські"/"Східна Карибія"; окремо додано дефісний
+    // варіант "Східно-Карибські" (з дефісом між "Східно" та "Карибські"), який трапляється
+    // в даних монет і не збігається з підрядком без дефіса.
+    test: (l) => l.includes("східнокариб") || l.includes("східно-кариб") || l.includes("східна карибі") || l.includes("east caribbean") || l.includes("eastern caribbean") || l.includes("oecs"),
+    src: "/flags/eastern-caribbean.svg",
+    label: "Східнокарибські держави (ОСКД)",
   },
 ];
 

@@ -55,6 +55,50 @@ export default function CountryFlag({
     );
   }
 
+  // Italy/Germany: the AI/user often write just the modern country name without the
+  // historical qualifier ("Італія" for a 1938 coin instead of "Італія (Королівство)").
+  // getHistoricalFlagAsset() above only fires on the explicit qualifier, so as a fallback
+  // for those unqualified rows, use the mint year to pick the flag that was actually flying —
+  // same idea as the Libya case above, just generalized by ISO code + year range.
+  if (code === "it" && year != null && year >= 1861 && year < 1946 && !historicalError) {
+    return (
+      <img
+        src="/flags/historical/kingdom-italy.svg"
+        alt={country}
+        title={`Королівство Італія (${year})`}
+        className={`${className} border border-white/10`}
+        onError={() => setHistoricalError(true)}
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  if (code === "de" && year != null && !historicalError) {
+    if (year >= 1933 && year <= 1945) {
+      return (
+        <img
+          src="/flags/historical/third-reich.svg"
+          alt={country}
+          title={`Третій Рейх (${year})`}
+          className={`${className} border border-white/10`}
+          onError={() => setHistoricalError(true)}
+          referrerPolicy="no-referrer"
+        />
+      );
+    }
+    if (year >= 1871 && year <= 1918) {
+      return (
+        <img
+          src="/flags/historical/german-empire.svg"
+          alt={country}
+          title={`Німецька імперія (${year})`}
+          className={`${className} border border-white/10`}
+          onError={() => setHistoricalError(true)}
+          referrerPolicy="no-referrer"
+        />
+      );
+    }
+  }
+
   if (code === "ancient") {
     return (
       <span className={`${fallbackSizeClass} leading-none shrink-0 inline-block font-sans`} title={country}>

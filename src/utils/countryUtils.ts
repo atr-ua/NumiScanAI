@@ -259,7 +259,8 @@ export const getCountryIsoCode = (country: string): string | null => {
   if (lower.includes("гватемал") || lower.includes("guatemal")) return "gt";
   if (lower.includes("сальвадор") || lower.includes("el salvador")) return "sv";
   if (lower.includes("суринам") || lower.includes("surinam")) return "sr";
-  if (lower.includes("гайан") || lower.includes("guyan")) return "gy";
+  // "Гаяна" — поширене написання без "й"; "гайан" залишено для варіанту "Гайана".
+  if (lower.includes("гаян") || lower.includes("гайан") || lower.includes("guyan")) return "gy";
   if (lower.includes("ямайк") || lower.includes("jamaica")) return "jm";
   if (lower.includes("тринідад") || lower.includes("trinidad")) return "tt";
   if (lower.includes("барбадос") || lower.includes("barbados")) return "bb";
@@ -533,7 +534,7 @@ export const getCountryFlag = (country: string): string => {
   if (lower.includes("гватемал") || lower.includes("guatemal")) return "🇬🇹";
   if (lower.includes("сальвадор") || lower.includes("el salvador")) return "🇸🇻";
   if (lower.includes("суринам") || lower.includes("surinam")) return "🇸🇷";
-  if (lower.includes("гайан") || lower.includes("guyan")) return "🇬🇾";
+  if (lower.includes("гаян") || lower.includes("гайан") || lower.includes("guyan")) return "🇬🇾";
   if (lower.includes("ямайк") || lower.includes("jamaica")) return "🇯🇲";
   if (lower.includes("тринідад") || lower.includes("trinidad")) return "🇹🇹";
   if (lower.includes("барбадос") || lower.includes("barbados")) return "🇧🇧";
