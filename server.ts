@@ -12,14 +12,51 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds, dbGetNumistaQuota, dbSetNumistaQuota } from "./src/db.js";
 import { generateCatalogPdf } from "./src/pdfExport.js";
+import { requireAuth, isAuthed, isAuthConfigured, verifyPassword, issueSession, clearSession } from "./src/serverAuth.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
+// Behind nginx: trust X-Forwarded-* so req.secure / client IP are accurate
+app.set("trust proxy", 1);
+
 // Increase payload bounds for base64 image uploads
 app.use(express.json({ limit: "20mb" }));
+
+// ── Auth (single shared password → signed HttpOnly cookie) ────────────────────
+if (!isAuthConfigured()) {
+  console.warn("[auth] AUTH_PASSWORD is not set — recognition, Services and editing are locked for everyone.");
+}
+
+// Crude brute-force brake: escalating delay per client IP after failed logins
+const loginFails = new Map<string, { n: number; ts: number }>();
+
+app.get("/api/auth", (req, res) => {
+  res.json({ authed: isAuthed(req), configured: isAuthConfigured() });
+});
+
+app.post("/api/login", async (req, res) => {
+  const ip = req.ip || "?";
+  const rec = loginFails.get(ip);
+  if (rec && Date.now() - rec.ts < 15 * 60_000 && rec.n >= 2) {
+    await new Promise((r) => setTimeout(r, Math.min(2000, 250 * rec.n)));
+  }
+  if (!isAuthConfigured()) return res.status(503).json({ error: "Автентифікація не налаштована на сервері (AUTH_PASSWORD)" });
+  if (!verifyPassword(req.body?.password)) {
+    loginFails.set(ip, { n: (rec?.n ?? 0) + 1, ts: Date.now() });
+    return res.status(401).json({ error: "Невірний пароль" });
+  }
+  loginFails.delete(ip);
+  issueSession(req, res);
+  res.json({ ok: true });
+});
+
+app.post("/api/logout", (req, res) => {
+  clearSession(req, res);
+  res.json({ ok: true });
+});
 
 // Safe environment key handling
 const getApiKey      = () => process.env.GEMINI_API_KEY || "";
@@ -84,7 +121,7 @@ app.get("/api/coins/:id", async (req, res) => {
 });
 
 // API: Save or update a coin
-app.post("/api/coins", async (req, res) => {
+app.post("/api/coins", requireAuth, async (req, res) => {
   try {
     const saved = await dbSaveCoin(req.body);
     res.json(saved);
@@ -94,7 +131,7 @@ app.post("/api/coins", async (req, res) => {
 });
 
 // API: Swap obverse and reverse images for a coin
-app.post("/api/coins/:id/swap-images", async (req, res) => {
+app.post("/api/coins/:id/swap-images", requireAuth, async (req, res) => {
   try {
     const coin = await dbGetCoin(req.params.id);
     if (!coin) return res.status(404).json({ error: "Not found" });
@@ -111,7 +148,7 @@ app.post("/api/coins/:id/swap-images", async (req, res) => {
 });
 
 // API: Reorder coins by assigning vis_id 1..N
-app.post("/api/coins/reorder", async (req, res) => {
+app.post("/api/coins/reorder", requireAuth, async (req, res) => {
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: "ids must be an array" });
@@ -123,7 +160,7 @@ app.post("/api/coins/reorder", async (req, res) => {
 });
 
 // API: Delete coin
-app.delete("/api/coins/:id", async (req, res) => {
+app.delete("/api/coins/:id", requireAuth, async (req, res) => {
   try {
     await dbDeleteCoin(req.params.id);
     res.json({ success: true, id: req.params.id });
@@ -133,7 +170,7 @@ app.delete("/api/coins/:id", async (req, res) => {
 });
 
 // API: Batch-update mintage for all coins via Gemini (text-only, no images)
-app.post("/api/batch-mintage", async (req, res) => {
+app.post("/api/batch-mintage", requireAuth, async (req, res) => {
   const apiKey = getApiKey();
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY відсутній" });
 
@@ -211,7 +248,7 @@ Coins:\n`;
 });
 
 // API: List available Gemini models that support generateContent
-app.get("/api/gemini-models", async (_req, res) => {
+app.get("/api/gemini-models", requireAuth, async (_req, res) => {
   const apiKey = getApiKey();
   if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY відсутній" });
 
@@ -282,7 +319,7 @@ const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, corre
       : `Identify this coin from the image. ${COIN_VISUAL_HINTS} All text fields MUST be in Ukrainian.`;
 
 // API: Fetch available models from LM Studio
-app.get("/api/lm-studio-models", async (req, res) => {
+app.get("/api/lm-studio-models", requireAuth, async (req, res) => {
   const url   = getLmStudioUrl(req.query.url as string);
   const token = (req.query.token as string) || "";
   try {
@@ -303,7 +340,7 @@ app.get("/api/lm-studio-models", async (req, res) => {
 });
 
 // API: Fetch available models from Ollama
-app.get("/api/ollama-models", async (req, res) => {
+app.get("/api/ollama-models", requireAuth, async (req, res) => {
   const url = getOllamaUrl(req.query.url as string);
   try {
     const r = await fetch(`${url}/api/tags`);
@@ -321,7 +358,7 @@ app.get("/api/ollama-models", async (req, res) => {
 });
 
 // API: Recognize coin via Gemini or OpenAI (auto-detected by model prefix)
-app.post("/api/recognize-coin", async (req, res) => {
+app.post("/api/recognize-coin", requireAuth, async (req, res) => {
   const { image, imageReverse, correction, previousResult, model, lmStudioUrl, lmStudioToken, ollamaUrl } = req.body;
   const modelName: string = model || "gemini-2.0-flash";
   if (!image) return res.status(400).json({ error: "Зображення не передано" });
@@ -676,7 +713,7 @@ function extractMintageForYear(coin: any, year: number): string | null {
 }
 
 // API: current month's Numista request usage (plan quota is 2000/calendar month).
-app.get("/api/numista-quota", async (_req, res) => {
+app.get("/api/numista-quota", requireAuth, async (_req, res) => {
   const quota = await readNumistaQuota();
   res.json({ month: quota.month, count: quota.count, limit: NUMISTA_MONTHLY_LIMIT });
 });
@@ -687,7 +724,7 @@ app.get("/api/numista-quota", async (_req, res) => {
 let currentSync: { aborted: boolean } | null = null;
 
 // ── Numista sync (SSE) ────────────────────────────────────────────────────────
-app.get("/api/numista-sync", async (req, res) => {
+app.get("/api/numista-sync", requireAuth, async (req, res) => {
   const apiKey = process.env.NUMISTA_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: "NUMISTA_API_KEY не встановлений у .env" });
@@ -845,7 +882,7 @@ app.get("/api/numista-sync", async (req, res) => {
 });
 
 // API: Generate PDF catalog for a given ordered list of coin IDs
-app.post("/api/export/pdf", async (req, res) => {
+app.post("/api/export/pdf", requireAuth, async (req, res) => {
   try {
     const { ids, withImages = true, filterSummary = "" } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {

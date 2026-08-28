@@ -16,6 +16,8 @@ type SortPreset = "date" | "country" | "year" | "country_year_denom" | "country_
 
 interface CoinDatabaseProps {
   coins: Coin[];
+  /** When false the catalog is read-only: no edit/delete/reorder, no AI verification. */
+  canEdit?: boolean;
   onDeleteCoin: (id: string) => Promise<void>;
   onUpdateCoin: (coin: Coin) => Promise<void>;
   onReorderCoins: (ids: string[]) => Promise<void>;
@@ -98,7 +100,7 @@ const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
   return sorted.map((c) => c.id);
 };
 
-export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter, onFilteredCoinsChange, onFilterDescriptionChange }: CoinDatabaseProps) {
+export default function CoinDatabase({ coins, canEdit = false, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter, onFilteredCoinsChange, onFilterDescriptionChange }: CoinDatabaseProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMetalFilter, setSelectedMetalFilter] = useState("Всі");
   const [currentPage, setCurrentPage] = useState(1);
@@ -591,6 +593,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
         </div>
 
         {/* Sort presets */}
+        {canEdit && (
         <div className="flex flex-wrap gap-1.5 items-center pt-1">
           <span className="text-xs text-white/40 mr-1">Порядок:</span>
           {SORT_PRESETS.map((p) => (
@@ -605,6 +608,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {/* Grid List of Coins */}
@@ -980,7 +984,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                     </div>
                   )}
 
-                  {!isEditing && selectedCoin.imageObverse && selectedCoin.imageReverse && (
+                  {!isEditing && canEdit && selectedCoin.imageObverse && selectedCoin.imageReverse && (
                     <div className="flex justify-center mt-1">
                       <button
                         type="button"
@@ -1261,7 +1265,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
               )}
 
               {/* AI verification panel */}
-              {!isEditing && (
+              {!isEditing && canEdit && (
                 <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
                     <div className="min-w-0">
@@ -1363,6 +1367,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
             </div>
 
             {/* Modal Actions */}
+            {canEdit && (
             <div className="px-4 py-3 bg-[#0D0D0E] border-t border-white/5 flex items-center justify-between gap-3">
               {!showConfirmDelete ? (
                 <button
@@ -1429,6 +1434,7 @@ export default function CoinDatabase({ coins, onDeleteCoin, onUpdateCoin, onReor
                 )}
               </div>
             </div>
+            )}
           </div>
         </div>
       )}

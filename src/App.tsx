@@ -10,8 +10,10 @@ import CoinUpload from "./components/CoinUpload";
 import CoinDatabase, { fixTitleWithYear } from "./components/CoinDatabase";
 import CollectionAnalytics from "./components/CollectionAnalytics";
 import ServicePage from "./components/ServicePage";
-import { Database, Sparkles, Award, Plus, Compass, Server, AlertTriangle } from "lucide-react";
+import LoginModal from "./components/LoginModal";
+import { Database, Sparkles, Award, Plus, Compass, Server, AlertTriangle, LogIn, LogOut } from "lucide-react";
 import CountryFlag from "./components/CountryFlag";
+import { useAuth } from "./useAuth";
 
 export default function App() {
   const [coins, setCoins] = useState<Coin[]>([]);
@@ -20,6 +22,14 @@ export default function App() {
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [recognitionError, setRecognitionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"database" | "recognition" | "statistics" | "service">("database");
+
+  const { canEdit, configured: authConfigured, login, logout } = useAuth();
+  const [showLogin, setShowLogin] = useState(false);
+
+  // Bounce unauthorized visitors off privileged tabs
+  useEffect(() => {
+    if (!canEdit && (activeTab === "recognition" || activeTab === "service")) setActiveTab("database");
+  }, [canEdit, activeTab]);
 
   // Temporary container to show recently recognized coin before saving it to database
   const [recentRecognized, setRecentRecognized] = useState<Partial<Coin> | null>(null);
@@ -42,11 +52,11 @@ export default function App() {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key !== "F8") return;
       e.preventDefault();
-      setActiveTab("recognition");
+      if (canEdit) setActiveTab("recognition");
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, []);
+  }, [canEdit]);
 
   const fetchCoins = async () => {
     setIsLoading(true);
@@ -227,10 +237,29 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs hidden sm:flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
               Node.js Web Server Active
             </div>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={logout}
+                className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Вийти"
+              >
+                <LogOut className="h-3.5 w-3.5" /> Вийти
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowLogin(true)}
+                className="px-3 py-1.5 rounded-full bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 border border-[#D4AF37]/30 text-[#D4AF37] text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Вхід для редагування та ШІ"
+              >
+                <LogIn className="h-3.5 w-3.5" /> Вхід
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -285,6 +314,7 @@ export default function App() {
             База монет ({coins.length})
           </button>
           
+          {canEdit && (
           <button
             type="button"
             onClick={() => setActiveTab("recognition")}
@@ -297,7 +327,8 @@ export default function App() {
             <Sparkles className="h-4 w-4" />
             ШІ-Розпізнавання & Додавання
           </button>
-          
+          )}
+
           <button
             type="button"
             onClick={() => setActiveTab("statistics")}
@@ -311,6 +342,7 @@ export default function App() {
             Статистика колекції
           </button>
 
+          {canEdit && (
           <button
             type="button"
             onClick={() => setActiveTab("service")}
@@ -323,6 +355,7 @@ export default function App() {
             <Server className="h-4 w-4" />
             Сервіси & REST API
           </button>
+          )}
         </div>
 
         {/* Tab Content Rendering */}
@@ -346,6 +379,7 @@ export default function App() {
             <div className="animate-fade-in w-full">
               <CoinDatabase
                 coins={coins}
+                canEdit={canEdit}
                 onDeleteCoin={handleDeleteCoin}
                 onUpdateCoin={handleUpdateCoin}
                 onReorderCoins={handleReorderCoins}
@@ -357,7 +391,7 @@ export default function App() {
             </div>
           )}
 
-          {!isLoading && activeTab === "recognition" && (
+          {!isLoading && activeTab === "recognition" && canEdit && (
             <div className="flex flex-col gap-6 animate-fade-in">
             {/* Model selector */}
             <div className="flex items-center gap-3 flex-wrap">
@@ -537,7 +571,7 @@ export default function App() {
             </div>
           )}
 
-          {!isLoading && activeTab === "service" && (
+          {!isLoading && activeTab === "service" && canEdit && (
             <div className="animate-fade-in w-full">
               <ServicePage
                 catalogCoins={filteredCatalogCoins}
@@ -551,6 +585,13 @@ export default function App() {
           )}
         </div>
       </main>
+
+      <LoginModal
+        open={showLogin}
+        configured={authConfigured}
+        onClose={() => setShowLogin(false)}
+        onSubmit={login}
+      />
 
       {/* Decorative footer */}
       <footer className="border-t border-white/5 bg-[#0D0D0E] py-6 mt-12 text-center text-[10px] text-white/30 font-mono">
