@@ -21,6 +21,13 @@ if (-not $RemoteHost) {
   throw "Set -RemoteHost user@server  (or `$env:NUMISCAN_HOST)"
 }
 
+# Prefer Windows' native OpenSSH: the Git-for-Windows ssh/scp mangle POSIX-looking
+# arguments (":/opt/..." -> "C:/Program Files/Git/opt/...").
+$sysSsh = Join-Path $env:SystemRoot "System32\OpenSSH\ssh.exe"
+$sysScp = Join-Path $env:SystemRoot "System32\OpenSSH\scp.exe"
+$ssh = if (Test-Path $sysSsh) { $sysSsh } else { "ssh" }
+$scp = if (Test-Path $sysScp) { $sysScp } else { "scp" }
+
 $snap = Join-Path $env:TEMP "coins-snapshot.db"
 if (Test-Path $snap) { Remove-Item $snap -Force }
 
@@ -32,11 +39,11 @@ $mb = "{0:N0}" -f ((Get-Item $snap).Length / 1MB)
 Write-Host "==> Snapshot size: $mb MB" -ForegroundColor Cyan
 
 Write-Host "==> Uploading to ${RemoteHost}:${RemotePath}/coins.db.incoming  ($mb MB, -C compresses in transit)" -ForegroundColor Cyan
-& scp -C $snap "${RemoteHost}:${RemotePath}/coins.db.incoming"
+& $scp -C $snap "${RemoteHost}:${RemotePath}/coins.db.incoming"
 if ($LASTEXITCODE -ne 0) { throw "scp failed" }
 
 Write-Host "==> Swapping in on the remote (brief restart)" -ForegroundColor Cyan
-& ssh $RemoteHost "bash ${RemotePath}/deploy/receive-db.sh"
+& $ssh $RemoteHost "bash ${RemotePath}/deploy/receive-db.sh"
 if ($LASTEXITCODE -ne 0) { throw "remote swap failed" }
 
 if (-not $KeepSnapshot) { Remove-Item $snap -Force }

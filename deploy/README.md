@@ -58,6 +58,11 @@ cd /opt/numiscan
 Everything below runs **as the `numiscan` user** unless it says `sudo`:
 `sudo -iu numiscan`.
 
+> Simpler alternative when one operator owns the box: skip the dedicated user,
+> clone `/opt/numiscan` owned by your existing sudo login (e.g. `ubuntu`), and set
+> `User=`/`Group=` in the unit to that name. `push-db.ps1` then needs no
+> permission juggling. That is how the live `coins.atrua.duckdns.org` runs.
+
 ---
 
 ## 3. One-time database copy from Windows
@@ -114,6 +119,14 @@ the catalog read-only to everyone (see section 8).
 ```bash
 npm ci                       # .npmrc pins legacy-peer-deps=true (react-simple-maps vs React 19)
 npm run build                # vite build  +  esbuild bundle -> dist/server.cjs
+```
+
+If `node -e "require('sqlite3')"` fails with `GLIBC_2.xx not found`, the prebuilt
+binary is newer than this distro's glibc — rebuild it locally (needs
+`build-essential python3`, already installed in step 1):
+
+```bash
+npm rebuild sqlite3 --build-from-source
 ```
 
 Quick smoke test before wiring systemd:
@@ -255,7 +268,9 @@ periodically.
 | Symptom | Cause / fix |
 |---|---|
 | `npm ci` fails on peer deps | `.npmrc` with `legacy-peer-deps=true` must be present (it is, in the repo). |
-| `sqlite3` build fails | `build-essential python3` installed? Node 22? prebuilt binary is used otherwise. |
+| `require('sqlite3')` → `GLIBC_2.38 not found` | Prebuilt binary too new for the distro. `npm rebuild sqlite3 --build-from-source`. |
+| `nginx: conflicting server name ... ignored` | Another vhost already claims that name. Use a different (sub)domain; the app doesn't need to own the apex. |
+| `push-db.ps1`: scp writes to `C:/Program Files/Git/...` | Running it *through Git Bash* mangles `/opt/...`. Run from a real PowerShell prompt. |
 | 413 Request Entity Too Large | `client_max_body_size` in the vhost < 25M, or you added another `location`. |
 | Recognition / sync cuts off ~60 s | `proxy_read_timeout` / `proxy_buffering off` missing from the active vhost. |
 | Service runs but `dist` 404s | `WorkingDirectory` not `/opt/numiscan`, or `npm run build` not run. |
