@@ -161,13 +161,24 @@ const coinInsertOrReplace = async (c: any): Promise<void> => {
     r.rarity, r.grade, r.historicalContext, r.notes, r.category,
     r.recognizedBy, r.recognizedAt, r.createdAt, r.updatedAt,
   ]);
+  invalidateCoinsCache();
 };
 
 // ── public API ────────────────────────────────────────────────────────────────
 
+// In-memory cache for the catalog list. The `coins` table stores images inline
+// (base64 TEXT on the same rows), so on a slow disk a full table scan takes tens of
+// seconds even when the query selects none of the image columns — SQLite still has to
+// page through the whole b-tree, overflow pages included, to enumerate every row.
+// Caching the list and invalidating only on writes turns that into a one-time cost per
+// server start (or, on a read-only deployment with no writes at all, effectively zero).
+let coinsListCache: any[] | null = null;
+const invalidateCoinsCache = () => { coinsListCache = null; };
+
 /** Returns all coins — images excluded for fast list rendering. */
-export const dbGetCoins = (): Promise<any[]> =>
-  all(`
+export const dbGetCoins = async (): Promise<any[]> => {
+  if (coinsListCache) return [...coinsListCache];
+  const rows = await all(`
     SELECT id, title, denomination, country, year,
            metal, weight, diameter, estimatedValue, mintage, thickness, edge, rarity, grade,
            historicalContext, notes, category, vis_id, recognizedBy, recognizedAt, createdAt, updatedAt,
@@ -176,6 +187,9 @@ export const dbGetCoins = (): Promise<any[]> =>
     FROM coins
     ORDER BY CASE WHEN vis_id > 0 THEN vis_id ELSE 0 END ASC, createdAt DESC, recognizedAt DESC
   `);
+  coinsListCache = rows;
+  return [...rows];
+};
 
 /** Assigns vis_id 1..N to coins in the given order. */
 export const dbReorderCoins = async (ids: string[]): Promise<void> => {
@@ -185,6 +199,7 @@ export const dbReorderCoins = async (ids: string[]): Promise<void> => {
       await run("UPDATE coins SET vis_id = ? WHERE id = ?", [i + 1, ids[i]]);
     }
     await run("COMMIT");
+    invalidateCoinsCache();
   } catch (e) {
     await run("ROLLBACK");
     throw e;
@@ -196,7 +211,7 @@ export const dbGetCoinsForMintage = (): Promise<any[]> =>
   all(`SELECT id, title, country, year, denomination, metal, mintage, thickness, edge, weight, diameter FROM coins ORDER BY country, year`);
 
 /** Updates any combination of spec fields for a single coin. */
-export const dbUpdateSpecs = (id: string, specs: {
+export const dbUpdateSpecs = async (id: string, specs: {
   mintage?: string; thickness?: string; edge?: string;
   weight?: string; diameter?: string; estimatedValue?: string;
 }): Promise<void> => {
@@ -211,7 +226,8 @@ export const dbUpdateSpecs = (id: string, specs: {
   if (!fields.length) return Promise.resolve();
   const sets = fields.map(([f]) => `${f} = ?`);
   const vals = [...fields.map(([, v]) => v), new Date().toISOString(), id];
-  return run(`UPDATE coins SET ${sets.join(", ")}, updatedAt = ? WHERE id = ?`, vals);
+  await run(`UPDATE coins SET ${sets.join(", ")}, updatedAt = ? WHERE id = ?`, vals);
+  invalidateCoinsCache();
 };
 
 /** Returns a single coin with full image data. */
@@ -237,8 +253,10 @@ export const dbSaveCoin = async (c: any): Promise<any> => {
 };
 
 /** Delete a coin by id. */
-export const dbDeleteCoin = (id: string): Promise<void> =>
-  run("DELETE FROM coins WHERE id = ?", [id]);
+export const dbDeleteCoin = async (id: string): Promise<void> => {
+  await run("DELETE FROM coins WHERE id = ?", [id]);
+  invalidateCoinsCache();
+};
 
 /** Numista API monthly request quota tracking (persists across server restarts). */
 export const dbGetNumistaQuota = async (): Promise<{ month: string; count: number }> => {
