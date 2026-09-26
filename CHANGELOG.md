@@ -6,6 +6,50 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Single-password auth gate for a public mirror** — `AUTH_PASSWORD` unlocks AI recognition, the Services tab and catalog editing; everyone else gets a read-only catalog (no edit/delete/reorder buttons, no AI panels). Signed HttpOnly session cookie, no new dependencies; every privileged `/api/*` route enforces it server-side. Empty `AUTH_PASSWORD` keeps the whole site read-only
+- **Linux deployment kit** (`deploy/`) — systemd unit, nginx vhost (25 MB bodies, 300 s timeouts, SSE-safe), `deploy.sh`, `backup.sh`, and a full Ubuntu 22.04 runbook; `.npmrc` pins `legacy-peer-deps`
+- **Local-is-source-of-truth DB publishing** — `deploy/push-db.ps1` takes a consistent `VACUUM INTO` snapshot, uploads it and swaps it in on the server (`receive-db.sh`: validate, stop, pre-push backup, swap, restart)
+- **Denomination normalization** (`src/utils/normalizeDenomination.ts`) — hand-audited rule table that collapses recognition spelling drift (райхс→рейхс, пфенніг→пфеніг, ере/оре/йоре, пайз→пайса, латинська «i» у «піастрів» тощо) on save; deliberately leaves look-alike *different* currencies alone (Chinese «фен», «толар» vs «долар»)
+- **"Схоже на вже наявну монету" soft warning** after recognition — same year plus loosely matching country/denomination (`src/utils/denominationMatch.ts`); never auto-categorizes, so legitimately owned multiples are not flagged as duplicates
+- **`scripts/renormalize-catalog.ts`** — dry-run-by-default backfill of country + denomination normalization over existing rows (`--apply` to write)
+
+### Changed
+- **Recognition prompt/schema for data quality** — accuracy rules ("Невідомо" instead of fabricated specs), `visualEvidence` chain-of-thought field first (verbatim legends, date, mint mark), enums for `edge`/`rarity`/`grade`, `temperature: 0` for Gemini and gpt-4*; `historicalContext` is 4–6 sentences only when the type is confidently identified
+- **Exact-duplicate check** now canonicalizes country and denomination before comparing
+
+### Fixed
+- **Catalog list took ~33 s on a slow-disk server** — images are stored inline in the `coins` table, so any full-table scan pages through the whole ~1.7 GB file even when no image column is selected; `dbGetCoins()` is now cached in memory and invalidated on writes (one slow request per server start, none on a read-only mirror)
+- **Empty model reply was returned as a fake successful `{}`** for LM Studio/Ollama; now raises a clear error (`parseModelJsonReply`)
+- **`push-db.ps1` wrote to `C:/Program Files/Git/...`** when driven through Git Bash — now prefers Windows' native OpenSSH
+
+### Technical
+- `sqlite3` prebuilt binary needs glibc 2.38 (Ubuntu 22.04 has 2.35): `npm rebuild sqlite3 --build-from-source` on the server; `deploy.sh` now does this automatically when the binary doesn't load after `npm ci`
+- One-time backfill normalized 39 denominations and 1 legacy country/denomination record in the catalog
+- Tried OpenRouter as an extra recognition provider and removed it again (no practical benefit)
+
+### Додано
+- **Вхід за єдиним паролем для публічного дзеркала** — `AUTH_PASSWORD` відкриває ШІ-розпізнавання, вкладку «Сервіси» та редагування; решта бачить каталог лише для читання (без кнопок редагування/видалення/сортування й ШІ-панелей). Підписана HttpOnly-cookie, без нових залежностей; кожен привілейований `/api/*` перевіряється на сервері. Порожній `AUTH_PASSWORD` = увесь сайт лише для читання
+- **Набір для розгортання на Linux** (`deploy/`) — systemd-юніт, nginx-vhost (тіла до 25 МБ, таймаути 300 с, SSE), `deploy.sh`, `backup.sh` і повний runbook для Ubuntu 22.04; `.npmrc` фіксує `legacy-peer-deps`
+- **Публікація БД за принципом «локально — джерело правди»** — `deploy/push-db.ps1` робить узгоджений знімок `VACUUM INTO`, завантажує й підміняє на сервері (`receive-db.sh`: валідація, зупинка, бекап перед пушем, підміна, старт)
+- **Канонізація номіналів** (`src/utils/normalizeDenomination.ts`) — вручну звірена таблиця правил, що зводить розбіжності написання від розпізнавання (райхс→рейхс, пфенніг→пфеніг, ере/оре/йоре, пайз→пайса, латинська «i» у «піастрів» тощо) при збереженні; свідомо не чіпає схожі, але *різні* валюти (китайський «фен», «толар» проти «долар»)
+- **М'яке попередження «Схоже на вже наявну монету»** після розпізнавання — той самий рік і приблизно збіжні країна/номінал (`src/utils/denominationMatch.ts`); категорію не ставить автоматично, тож леґітимні кратні екземпляри не вважаються дублями
+- **`scripts/renormalize-catalog.ts`** — перенормалізація країни й номіналу в наявних записах (за замовчуванням dry-run, `--apply` — записати)
+
+### Змінено
+- **Промпт і схема розпізнавання для якості даних** — правила точності («Невідомо» замість вигаданих характеристик), перше поле `visualEvidence` (дослівні легенди, дата, знак д/в), enum для `edge`/`rarity`/`grade`, `temperature: 0` для Gemini і gpt-4*; `historicalContext` на 4–6 речень лише за впевненого визначення типу
+- **Точна перевірка дублів** тепер канонізує країну й номінал перед порівнянням
+
+### Виправлено
+- **Список каталогу вантажився ~33 с на сервері з повільним диском** — зображення лежать у тій самій таблиці `coins`, тож будь-який повний скан проходить увесь файл ~1.7 ГБ, навіть якщо колонки зображень не вибрані; `dbGetCoins()` тепер кешується в пам'яті й скидається при записі (один повільний запит на старт сервера, на read-only дзеркалі — жодного більше)
+- **Порожня відповідь моделі поверталась як «успішний» `{}`** для LM Studio/Ollama; тепер — зрозуміла помилка (`parseModelJsonReply`)
+- **`push-db.ps1` писав у `C:/Program Files/Git/...`** при запуску через Git Bash — тепер віддає перевагу нативному OpenSSH Windows
+
+### Технічне
+- Готовий бінарник `sqlite3` вимагає glibc 2.38 (в Ubuntu 22.04 — 2.35): на сервері `npm rebuild sqlite3 --build-from-source`; `deploy.sh` тепер робить це сам, якщо бінарник не завантажується після `npm ci`
+- Одноразова міграція нормалізувала 39 номіналів і 1 застарілий запис країни/номіналу в каталозі
+- OpenRouter як додатковий провайдер розпізнавання пробували й прибрали (практичної користі немає)
+
 ---
 
 ## [1.5.0] — 2026-08-28
