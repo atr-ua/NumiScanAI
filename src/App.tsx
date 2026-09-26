@@ -14,6 +14,9 @@ import LoginModal from "./components/LoginModal";
 import { Database, Sparkles, Award, Plus, Compass, Server, AlertTriangle, LogIn, LogOut } from "lucide-react";
 import CountryFlag from "./components/CountryFlag";
 import { useAuth } from "./useAuth";
+import { normalizeCountryName } from "./utils/normalizeCountryName";
+import { normalizeDenomination } from "./utils/normalizeDenomination";
+import { looseCountryMatch, looseDenominationMatch } from "./utils/denominationMatch";
 
 export default function App() {
   const [coins, setCoins] = useState<Coin[]>([]);
@@ -41,6 +44,7 @@ export default function App() {
     catch { return DEFAULT_PINNED; }
   });
   const [duplicates, setDuplicates] = useState<Coin[]>([]);
+  const [similarCoins, setSimilarCoins] = useState<Coin[]>([]);
   const [countryFilter, setCountryFilter] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   // Fetch all coins on mount
@@ -73,11 +77,16 @@ export default function App() {
     }
   };
 
+  // Exact-match duplicate: same canonical country + year + denomination text. Kept strict
+  // on purpose — this drives the auto "можливий дубль" category, and a fuzzy match here
+  // would wrongly flag legitimately-owned multiples of the same coin.
   const findDuplicates = (recognized: Partial<Coin>): Coin[] => {
+    const recCountry = normalizeCountryName(recognized.country || "", recognized.year).toLowerCase();
+    const recDenom = normalizeDenomination(recognized.denomination || "").toLowerCase();
     return coins.filter((coin) => {
-      const sameCountry = (coin.country || "").toLowerCase() === (recognized.country || "").toLowerCase();
+      const sameCountry = (coin.country || "").toLowerCase() === recCountry;
       const sameYear = String(coin.year || "").trim() === String(recognized.year || "").trim();
-      const sameDenom = (coin.denomination || "").toLowerCase().trim() === (recognized.denomination || "").toLowerCase().trim();
+      const sameDenom = normalizeDenomination(coin.denomination || "").toLowerCase() === recDenom;
       if (sameCountry && sameYear && sameDenom) return true;
 
       // Fallback: title word-overlap ≥ 60%, but only within same country AND denomination
@@ -90,12 +99,31 @@ export default function App() {
     });
   };
 
+  // Soft warning: same year + loosely-matching country/denomination text (spelling drift
+  // between recognition runs, e.g. "пфенігів"/"пфенінгів" or "Німеччина"/"Німеччина (ФРН)").
+  // Deliberately excludes exact duplicates() results and never auto-sets a category —
+  // the user decides whether it's the same coin or a second legitimate copy.
+  const findSimilarCoins = (recognized: Partial<Coin>, exact: Coin[]): Coin[] => {
+    const exactIds = new Set(exact.map((c) => c.id));
+    const recDenom = normalizeDenomination(recognized.denomination || "");
+    return coins.filter((coin) => {
+      if (exactIds.has(coin.id)) return false;
+      const sameYear = String(coin.year || "").trim() === String(recognized.year || "").trim();
+      if (!sameYear) return false;
+      return (
+        looseCountryMatch(coin.country || "", recognized.country || "") &&
+        looseDenominationMatch(normalizeDenomination(coin.denomination || ""), recDenom)
+      );
+    });
+  };
+
   // Perform Gemini AI Coin recognition
   const handleRecognizeCoin = async (obverse: string, reverse?: string) => {
     setIsRecognizing(true);
     setRecognitionError(null);
     setRecentRecognized(null);
     setDuplicates([]);
+    setSimilarCoins([]);
     try {
       const res = await fetch("/api/recognize-coin", {
         method: "POST",
@@ -113,7 +141,9 @@ export default function App() {
       const actualReverse = (originalData.imagesSwapped && reverse) ? obverse : reverse;
       const recognized = { ...originalData, image: actualObverse, imageObverse: actualObverse, recognizedBy: selectedModel, ...(actualReverse ? { imageReverse: actualReverse } : {}) };
       setRecentRecognized(recognized);
-      setDuplicates(findDuplicates(recognized));
+      const exactDupes = findDuplicates(recognized);
+      setDuplicates(exactDupes);
+      setSimilarCoins(findSimilarCoins(recognized, exactDupes));
       setNotesInput("");
     } catch (err: any) {
       console.error("Помилка при з'єднанні з API:", err);
@@ -152,6 +182,7 @@ export default function App() {
         setRecentRecognized(null);
         setNotesInput("");
         setDuplicates([]);
+        setSimilarCoins([]);
         // Switch tab to show database, clear any active filters
         setCountryFilter(undefined);
         setActiveTab("database");
@@ -511,6 +542,28 @@ export default function App() {
                               <div key={d.id} className="flex items-center justify-between gap-2 bg-black/30 px-3 py-2 rounded-xl">
                                 <span className="text-[11px] text-white/70 truncate">{d.title}</span>
                                 <span className="text-[10px] text-amber-400/70 font-mono shrink-0">{d.grade}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Soft similarity warning: same coin, likely different AI phrasing */}
+                      {similarCoins.length > 0 && (
+                        <div className="space-y-2 bg-sky-500/5 border border-sky-500/25 rounded-2xl p-4">
+                          <div className="flex items-center gap-1.5 text-[10px] text-sky-400 font-mono font-bold uppercase tracking-widest">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            Схоже на вже наявну монету ({similarCoins.length})
+                          </div>
+                          <p className="text-[10px] text-white/35 leading-relaxed">
+                            Рік і номінал близькі, але країна чи номінал записані іншими словами —
+                            перевірте, чи це не той самий екземпляр, перш ніж додавати.
+                          </p>
+                          <div className="space-y-1.5">
+                            {similarCoins.map((d) => (
+                              <div key={d.id} className="flex items-center justify-between gap-2 bg-black/30 px-3 py-2 rounded-xl">
+                                <span className="text-[11px] text-white/70 truncate">{d.title}</span>
+                                <span className="text-[10px] text-sky-400/70 font-mono shrink-0">{d.country}</span>
                               </div>
                             ))}
                           </div>
