@@ -318,6 +318,20 @@ const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, corre
       ? `Two images of the same coin are provided: the first is the obverse (heads), the second is the reverse (tails). Use BOTH images together to identify the coin as precisely as possible. ${COIN_VISUAL_HINTS} Also check whether the images are actually in the correct order — if the first image appears to be the reverse and the second the obverse, set imagesSwapped=true. All text fields MUST be in Ukrainian.`
       : `Identify this coin from the image. ${COIN_VISUAL_HINTS} All text fields MUST be in Ukrainian.`;
 
+/**
+ * Extracts the JSON object an OpenAI-compatible chat completion returned, stripping any
+ * markdown fence. Throws instead of silently falling back to "{}" on empty content — some
+ * reasoning models spend the whole max_tokens budget on hidden reasoning and emit nothing
+ * visible, which used to come back as a fake "successful" empty coin.
+ */
+const parseModelJsonReply = (raw: string | null | undefined): any => {
+  if (!raw || !raw.trim()) {
+    throw new Error("Модель не повернула відповідь (порожній content — можливо, вичерпано ліміт токенів на приховані роздуми цієї моделі). Спробуйте іншу модель.");
+  }
+  const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+  return JSON.parse(jsonStr);
+};
+
 // API: Fetch available models from LM Studio
 app.get("/api/lm-studio-models", requireAuth, async (req, res) => {
   const url   = getLmStudioUrl(req.query.url as string);
@@ -406,9 +420,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
         temperature: 0.1,
       });
 
-      const raw     = response.choices[0].message.content || "{}";
-      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-      return res.json(JSON.parse(jsonStr));
+      return res.json(parseModelJsonReply(response.choices[0].message.content));
     } catch (error: any) {
       console.error("Помилка LM Studio API:", error);
       return res.status(500).json({ error: error.message || "Помилка LM Studio API" });
@@ -448,9 +460,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
         temperature: 0.1,
       });
 
-      const raw     = response.choices[0].message.content || "{}";
-      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-      return res.json(JSON.parse(jsonStr));
+      return res.json(parseModelJsonReply(response.choices[0].message.content));
     } catch (error: any) {
       console.error("Помилка Ollama API:", error);
       return res.status(500).json({ error: error.message || "Помилка Ollama API" });
