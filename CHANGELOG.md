@@ -17,11 +17,15 @@ All notable changes to this project are documented here.
 ### Changed
 - **Recognition prompt/schema for data quality** — accuracy rules ("Невідомо" instead of fabricated specs), `visualEvidence` chain-of-thought field first (verbatim legends, date, mint mark), enums for `edge`/`rarity`/`grade`, `temperature: 0` for Gemini and gpt-4*; `historicalContext` is 4–6 sentences only when the type is confidently identified
 - **Exact-duplicate check** now canonicalizes country and denomination before comparing
+- **Coin images moved out of SQLite into files** (`images/`, `src/imageStore.ts`) — the DB keeps `file:<sha256>.<ext>` refs; names are content hashes, so files are never overwritten and identical photos share one file. `coins.db` went from ~1.8 GB to ~3 MB (2842 PNGs, ~0.9 GB, base64 overhead gone). The image endpoint streams the file from disk; `/api/coins/:id` and PDF export still get data URLs, so the frontend is unchanged. Legacy inline values keep working. One-time migration: `npx tsx scripts/migrate-images.ts --vacuum` (`--reverse` rolls back)
+- **`push-db.ps1` publishes images incrementally** — only image files the server lacks are sent (tar batches of ~200 MB, so an interrupted first upload resumes), always *before* the DB; `receive-db.sh` refuses the swap if the incoming DB references a missing file. `-Prune` deletes unreferenced images on the server. Helper: `deploy/image-refs.mjs list|check|prune`
+- **`backup.sh`** also keeps a hard-linked mirror of `images/` (no extra space, survives pruning)
 
 ### Fixed
 - **Catalog list took ~33 s on a slow-disk server** — images are stored inline in the `coins` table, so any full-table scan pages through the whole ~1.7 GB file even when no image column is selected; `dbGetCoins()` is now cached in memory and invalidated on writes (one slow request per server start, none on a read-only mirror)
 - **Empty model reply was returned as a fake successful `{}`** for LM Studio/Ollama; now raises a clear error (`parseModelJsonReply`)
 - **`push-db.ps1` wrote to `C:/Program Files/Git/...`** when driven through Git Bash — now prefers Windows' native OpenSSH
+- **`receive-db.sh` failed after a successful swap on the very first push** (no `backups/coins-pre-push-*.db` yet → `ls` error under `pipefail`)
 
 ### Technical
 - `sqlite3` prebuilt binary needs glibc 2.38 (Ubuntu 22.04 has 2.35): `npm rebuild sqlite3 --build-from-source` on the server; `deploy.sh` now does this automatically when the binary doesn't load after `npm ci`
@@ -39,11 +43,15 @@ All notable changes to this project are documented here.
 ### Змінено
 - **Промпт і схема розпізнавання для якості даних** — правила точності («Невідомо» замість вигаданих характеристик), перше поле `visualEvidence` (дослівні легенди, дата, знак д/в), enum для `edge`/`rarity`/`grade`, `temperature: 0` для Gemini і gpt-4*; `historicalContext` на 4–6 речень лише за впевненого визначення типу
 - **Точна перевірка дублів** тепер канонізує країну й номінал перед порівнянням
+- **Зображення монет винесено з SQLite у файли** (`images/`, `src/imageStore.ts`) — у БД лишаються посилання `file:<sha256>.<ext>`; ім'я файлу — хеш вмісту, тож файли ніколи не перезаписуються, а однакові фото — один файл. `coins.db` зменшилась з ~1,8 ГБ до ~3 МБ (2842 PNG, ~0,9 ГБ без накладних витрат base64). Ендпоінт зображення віддає файл з диска; `/api/coins/:id` і експорт PDF і далі отримують data URL, фронтенд не змінювався. Старі вбудовані значення теж працюють. Одноразова міграція: `npx tsx scripts/migrate-images.ts --vacuum` (`--reverse` — відкат)
+- **`push-db.ps1` заливає зображення інкрементально** — лише файли, яких немає на сервері (tar-пакети ~200 МБ, перервана перша заливка продовжується), і завжди *до* БД; `receive-db.sh` відмовляється підміняти БД, якщо бракує хоч одного файлу. `-Prune` видаляє на сервері зображення без посилань. Допоміжний `deploy/image-refs.mjs list|check|prune`
+- **`backup.sh`** додатково тримає дзеркало `images/` з жорстких посилань (без зайвого місця, переживає prune)
 
 ### Виправлено
 - **Список каталогу вантажився ~33 с на сервері з повільним диском** — зображення лежать у тій самій таблиці `coins`, тож будь-який повний скан проходить увесь файл ~1.7 ГБ, навіть якщо колонки зображень не вибрані; `dbGetCoins()` тепер кешується в пам'яті й скидається при записі (один повільний запит на старт сервера, на read-only дзеркалі — жодного більше)
 - **Порожня відповідь моделі поверталась як «успішний» `{}`** для LM Studio/Ollama; тепер — зрозуміла помилка (`parseModelJsonReply`)
 - **`push-db.ps1` писав у `C:/Program Files/Git/...`** при запуску через Git Bash — тепер віддає перевагу нативному OpenSSH Windows
+- **`receive-db.sh` падав після успішної підміни на найпершому пуші** (ще немає `backups/coins-pre-push-*.db` → помилка `ls` під `pipefail`)
 
 ### Технічне
 - Готовий бінарник `sqlite3` вимагає glibc 2.38 (в Ubuntu 22.04 — 2.35): на сервері `npm rebuild sqlite3 --build-from-source`; `deploy.sh` тепер робить це сам, якщо бінарник не завантажується після `npm ci`

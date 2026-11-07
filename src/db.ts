@@ -9,6 +9,7 @@ import path from "path";
 import fs from "fs";
 import { normalizeCountryName } from "./utils/normalizeCountryName.js";
 import { normalizeDenomination } from "./utils/normalizeDenomination.js";
+import { storeImage, hydrateCoinImages } from "./imageStore.js";
 
 const DB_PATH = path.join(process.cwd(), "coins.db");
 const LEGACY_JSON = path.join(process.cwd(), "src", "coins-data.json");
@@ -155,7 +156,13 @@ const UPSERT = `
 `;
 
 const coinInsertOrReplace = async (c: any): Promise<void> => {
-  const r = toRow(c);
+  // Inline image data → files on disk; the row keeps only `file:<hash>.<ext>` refs.
+  const r = toRow({
+    ...c,
+    image:        await storeImage(c.image ?? ""),
+    imageObverse: await storeImage(c.imageObverse ?? ""),
+    imageReverse: await storeImage(c.imageReverse ?? ""),
+  });
   await run(UPSERT, [
     r.id, r.image, r.imageObverse, r.imageReverse, r.title, r.denomination,
     r.country, r.year, r.metal, r.weight, r.diameter, r.estimatedValue, r.mintage, r.thickness, r.edge,
@@ -231,9 +238,17 @@ export const dbUpdateSpecs = async (id: string, specs: {
   invalidateCoinsCache();
 };
 
-/** Returns a single coin with full image data. */
-export const dbGetCoin = (id: string): Promise<any> =>
-  get("SELECT * FROM coins WHERE id = ?", [id]);
+/** Returns a single coin with full image data (refs resolved to data URLs). */
+export const dbGetCoin = async (id: string): Promise<any> =>
+  hydrateCoinImages(await get("SELECT * FROM coins WHERE id = ?", [id]));
+
+/** Raw stored value of one image column (a `file:` ref, or legacy inline data). */
+export const dbGetCoinImageRef = async (id: string, side: "obverse" | "reverse"): Promise<string | null> => {
+  const row = await get<{ image: string; imageObverse: string; imageReverse: string }>(
+    "SELECT image, imageObverse, imageReverse FROM coins WHERE id = ?", [id]);
+  if (!row) return null;
+  return (side === "reverse" ? row.imageReverse : row.imageObverse) || row.image || "";
+};
 
 /** Insert or update a coin (full data including images). */
 export const dbSaveCoin = async (c: any): Promise<any> => {
@@ -280,5 +295,6 @@ export const dbGetCoinsByIds = async (ids: string[]): Promise<any[]> => {
   const placeholders = ids.map(() => "?").join(",");
   const rows = await all<any>(`SELECT * FROM coins WHERE id IN (${placeholders})`, ids);
   const byId = new Map(rows.map((r: any) => [r.id, r]));
-  return ids.map(id => byId.get(id)).filter(Boolean);
+  const ordered = ids.map(id => byId.get(id)).filter(Boolean);
+  return Promise.all(ordered.map((c) => hydrateCoinImages(c)));
 };

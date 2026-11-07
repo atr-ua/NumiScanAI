@@ -19,3 +19,12 @@ echo "$(date -Is) wrote ${OUT}.gz ($(du -h "${OUT}.gz" | cut -f1))"
 
 # rotate
 ls -1t "$DEST"/coins-*.db.gz | tail -n +$((KEEP + 1)) | xargs -r rm -f
+
+# Images are immutable, content-named files: keep a never-shrinking mirror as hard links
+# (no extra disk space, survives `receive-db.sh --prune`), so every kept DB snapshot
+# above can still be restored together with its pictures.
+if [ -d "$APP_DIR/images" ]; then
+  mkdir -p "$DEST/images"
+  find "$APP_DIR/images" -maxdepth 1 -type f -name '*.*' -exec cp -n -l -t "$DEST/images/" {} +
+  echo "$(date -Is) images mirror: $(ls -1 "$DEST/images" | wc -l) files"
+fi

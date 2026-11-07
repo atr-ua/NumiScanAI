@@ -233,19 +233,30 @@ $env:NUMISCAN_HOST = "numiscan@YOUR_SERVER"   # once per shell
 .\deploy\push-db.ps1
 ```
 
-`push-db.ps1` → `snapshot-db.mjs` makes a consistent `VACUUM INTO` copy → `scp -C`
-uploads it to `coins.db.incoming` → `receive-db.sh` validates it, stops the
-service, keeps a `backups/coins-pre-push-*.db` rollback copy, swaps the file in,
-drops stale `-wal/-shm`, starts the service. Downtime is a few seconds.
+`push-db.ps1` → `snapshot-db.mjs` makes a consistent `VACUUM INTO` copy (a few MB:
+images are files, not DB rows) → lists the image files it references and uploads
+**only those the server does not have yet** (tar batches of `-BatchMB` 200, unpacked
+aside and moved in, so a broken transfer never leaves a truncated file; re-run to
+resume) → `scp` uploads the DB to `coins.db.incoming` → `receive-db.sh` validates it,
+**refuses if any referenced image is missing**, stops the service, keeps a
+`backups/coins-pre-push-*.db` rollback copy, swaps the file in, drops stale
+`-wal/-shm`, starts the service. Downtime is a few seconds.
+
+Images are named by content hash (`images/<sha256>.<ext>`), so a name always means
+the same bytes: nothing is ever overwritten, only added. Deleted or replaced photos
+leave unreferenced files behind; `.\deploy\push-db.ps1 -Prune` removes them on the
+server after the swap (locally: `node deploy/image-refs.mjs prune coins.db images --apply`).
+Pruning means the older `coins-pre-push-*` DBs may point at removed pictures —
+`backup.sh` keeps a hard-linked images mirror for that.
 
 Always `deploy.sh` (code) **before** `push-db.ps1` if the schema changed, so both
 sides run the same version.
 
-> **Size note:** images are stored as base64 *inside* `coins.db`, so the snapshot
-> is basically the full DB (~1.7 GB now) on every push — `VACUUM` can't shrink
-> that, it is real data. `scp -C` helps a little. If pushes get painful, move the
-> images out of SQLite into a files directory: `coins.db` drops to a few MB and
-> you `rsync` the image dir separately (only new files transfer).
+> **Migrating an old DB** (images inline as base64): stop the app, back up
+> `coins.db`, then `npx tsx scripts/migrate-images.ts --vacuum`. It is re-runnable
+> and ends with an integrity check; `--reverse` puts the images back into the DB.
+> The first push afterwards uploads every image once (~0.9 GB); later pushes send
+> only new photos.
 
 ---
 
@@ -258,7 +269,9 @@ sudo -u numiscan crontab -e
 ```
 
 `backup.sh` writes a compacted, gzip'd `VACUUM INTO` snapshot to
-`/opt/numiscan/backups/` and keeps the last 14. Pull them off-box with `rsync`
+`/opt/numiscan/backups/` and keeps the last 14, plus `backups/images/` — a
+never-shrinking hard-link mirror of `images/` (costs no space) so every kept
+snapshot can be restored with its pictures. Pull them off-box with `rsync`
 periodically.
 
 ---

@@ -10,7 +10,8 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
-import { initDb, dbGetCoins, dbGetCoin, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds, dbGetNumistaQuota, dbSetNumistaQuota } from "./src/db.js";
+import { refPath, mimeForRef, decodeInlineImage } from "./src/imageStore.js";
+import { initDb, dbGetCoins, dbGetCoin, dbGetCoinImageRef, dbSaveCoin, dbDeleteCoin, dbReorderCoins, dbGetCoinsForMintage, dbUpdateSpecs, dbGetCoinsByIds, dbGetNumistaQuota, dbSetNumistaQuota } from "./src/db.js";
 import { generateCatalogPdf } from "./src/pdfExport.js";
 import { requireAuth, isAuthed, isAuthConfigured, verifyPassword, issueSession, clearSession } from "./src/serverAuth.js";
 
@@ -93,17 +94,24 @@ app.get("/api/coins", async (_req, res) => {
 // API: Serve coin image as binary (browser-cacheable)
 app.get("/api/coins/:id/image/:side", async (req, res) => {
   try {
-    const coin = await dbGetCoin(req.params.id);
-    if (!coin) return res.status(404).end();
-    const field = req.params.side === "reverse" ? "imageReverse" : (coin.imageObverse ? "imageObverse" : "image");
-    const base64 = coin[field] || coin.image || "";
-    if (!base64) return res.status(404).end();
-    const match = base64.match(/^data:image\/(\w+);base64,(.+)$/s);
-    const mime = match ? `image/${match[1]}` : "image/jpeg";
-    const data = match ? match[2] : base64;
-    res.setHeader("Content-Type", mime);
-    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
-    res.send(Buffer.from(data, "base64"));
+    const value = await dbGetCoinImageRef(req.params.id, req.params.side === "reverse" ? "reverse" : "obverse");
+    if (!value) return res.status(404).end();
+    const cacheControl = "private, max-age=31536000, immutable";
+
+    // Normal case: stream the file straight from disk
+    const file = refPath(value);
+    if (file) {
+      return res.sendFile(file, { cacheControl: false, lastModified: false, headers: { "Content-Type": mimeForRef(value), "Cache-Control": cacheControl } }, (err) => {
+        if (err && !res.headersSent) res.status((err as any).statusCode === 404 ? 404 : 500).end();
+      });
+    }
+
+    // Legacy: image still inline in the DB (not yet migrated)
+    const img = decodeInlineImage(value);
+    if (!img) return res.status(404).end();
+    res.setHeader("Content-Type", img.mime);
+    res.setHeader("Cache-Control", cacheControl);
+    res.send(img.buf);
   } catch (e: any) {
     res.status(500).end();
   }
