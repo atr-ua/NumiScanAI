@@ -13,6 +13,8 @@ import { fixTitleWithYear } from "../utils/coinUtils";
 import { getCountryIsoCode } from "../utils/countryUtils";
 
 type SortPreset = "date" | "country" | "year" | "country_year_denom" | "country_denom_year";
+/** How *this browser* displays the list: the shared stored order, or a local re-sort. */
+type ViewSort = "catalog" | SortPreset;
 
 interface CoinDatabaseProps {
   coins: Coin[];
@@ -62,7 +64,7 @@ const denomNumber = (d?: string): number => {
   return m ? parseFloat(m[0].replace(",", ".")) : Number.POSITIVE_INFINITY;
 };
 
-const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
+const sortCoins = (coins: Coin[], preset: SortPreset): Coin[] => {
   const sorted = [...coins];
   switch (preset) {
     case "country":
@@ -97,7 +99,27 @@ const getSortedIds = (coins: Coin[], preset: SortPreset): string[] => {
       );
       break;
   }
-  return sorted.map((c) => c.id);
+  return sorted;
+};
+
+const getSortedIds = (coins: Coin[], preset: SortPreset): string[] =>
+  sortCoins(coins, preset).map((c) => c.id);
+
+// Per-visitor display order. Sorting ~1.5k already-loaded rows in the browser takes a few
+// ms and never touches the server, so guests can re-sort freely without affecting anyone
+// else; the shared stored order (vis_id) is just one of the options ("Як у каталозі").
+const VIEW_SORTS: { id: ViewSort; label: string }[] = [
+  { id: "catalog", label: "Як у каталозі" },
+  ...SORT_PRESETS,
+];
+const VIEW_SORT_KEY = "viewSort";
+const DEFAULT_VIEW_SORT: ViewSort = "date";
+const loadViewSort = (): ViewSort => {
+  try {
+    const v = localStorage.getItem(VIEW_SORT_KEY);
+    if (VIEW_SORTS.some((o) => o.id === v)) return v as ViewSort;
+  } catch {}
+  return DEFAULT_VIEW_SORT;
 };
 
 export default function CoinDatabase({ coins, canEdit = false, onDeleteCoin, onUpdateCoin, onReorderCoins, countryFilter, onClearCountryFilter, onFilteredCoinsChange, onFilterDescriptionChange }: CoinDatabaseProps) {
@@ -105,11 +127,20 @@ export default function CoinDatabase({ coins, canEdit = false, onDeleteCoin, onU
   const [selectedMetalFilter, setSelectedMetalFilter] = useState("Всі");
   const [currentPage, setCurrentPage] = useState(1);
   const [isReordering, setIsReordering] = useState(false);
+  const [viewSort, setViewSortState] = useState<ViewSort>(loadViewSort);
 
+  const setViewSort = (v: ViewSort) => {
+    setViewSortState(v);
+    setCurrentPage(1);
+    try { localStorage.setItem(VIEW_SORT_KEY, v); } catch {}
+  };
+
+  // Rewrites the stored order for every visitor (owner only)
   const handleApplySort = async (preset: SortPreset) => {
     setIsReordering(true);
     try {
       await onReorderCoins(getSortedIds(coins, preset));
+      setViewSort("catalog"); // show the result instead of it hiding behind a local re-sort
     } finally {
       setIsReordering(false);
     }
@@ -163,7 +194,12 @@ export default function CoinDatabase({ coins, canEdit = false, onDeleteCoin, onU
   const CATEGORY_ORDER = ["Біметал", "Срібло", "Золото", "Бронза", "Латунь", "Купроніккель", "Сталь", "Мідь", "Алюміній", "Нікель", "Інше"];
   const categoriesInDb = CATEGORY_ORDER.filter((cat) => coins.some((c) => metalToCategory(c.metal) === cat));
 
-  const filteredCoins = coins.filter((coin) => {
+  const orderedCoins = React.useMemo(
+    () => (viewSort === "catalog" ? coins : sortCoins(coins, viewSort)),
+    [coins, viewSort]
+  );
+
+  const filteredCoins = orderedCoins.filter((coin) => {
     const matchesSearch =
       coin.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       coin.country.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -592,10 +628,29 @@ export default function CoinDatabase({ coins, canEdit = false, onDeleteCoin, onU
           ))}
         </div>
 
-        {/* Sort presets */}
+        {/* Display order — local to this browser, available to everyone */}
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-xs text-white/40 mr-1">Показати:</span>
+          {VIEW_SORTS.map((o) => (
+            <button
+              type="button"
+              key={o.id}
+              onClick={() => setViewSort(o.id)}
+              className={`cursor-pointer px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                viewSort === o.id
+                  ? "bg-[#D4AF37] border-[#D4AF37] text-[#0A0A0B] font-bold shadow-sm"
+                  : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Stored catalog order — rewrites vis_id for every visitor (owner only) */}
         {canEdit && (
         <div className="flex flex-wrap gap-1.5 items-center pt-1">
-          <span className="text-xs text-white/40 mr-1">Порядок:</span>
+          <span className="text-xs text-white/40 mr-1" title="Змінює збережений порядок «Як у каталозі» для всіх відвідувачів">Порядок у каталозі (для всіх):</span>
           {SORT_PRESETS.map((p) => (
             <button
               key={p.id}
