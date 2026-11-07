@@ -311,12 +311,25 @@ const buildCoinSystemPrompt = (isRefinement: boolean) =>
 
 const COIN_VISUAL_HINTS = `Examine carefully: country name, denomination value, year of minting, ruler portrait or national emblem, mint mark, inscription language and script, edge design, and any special commemorative text. Cross-reference both sides to confirm identification. If ambiguous, choose the most likely candidate based on numismatic visual elements.`;
 
-const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, correction?: string, previousResult?: object) =>
+// Free-text note the owner typed in alongside the photos (they hold the coin and may read a
+// worn date, know the metal, country, period etc. better than the camera).
+const sanitizeCoinHint = (raw: unknown): string =>
+  typeof raw === "string" ? raw.trim().slice(0, 1000) : "";
+
+const buildCoinHintBlock = (hint: string) =>
+  hint
+    ? `\n\nThe coin's owner, who holds the physical coin, added this note (they may see details more clearly than the photo shows):\n"""\n${hint}\n"""\nTreat the facts in it (country, denomination, year, period, metal, mint mark, measurements…) as reliable constraints: use them for the matching fields and to narrow down the exact coin type, then derive weight, diameter, mintage, value and historicalContext for THAT type. Still transcribe in visualEvidence only what is actually visible; if the photo clearly contradicts the note, follow the note and mention the discrepancy in visualEvidence. Anything the note does not cover must still come from the image.`
+    : "";
+
+const buildCoinUserPromptBase = (isRefinement: boolean, hasBothSides: boolean, correction?: string, previousResult?: object) =>
   isRefinement
     ? `You previously identified this coin:\n${JSON.stringify(previousResult, null, 2)}\n\nUser correction: "${correction}"\n\nRe-examine the image(s) with this correction in mind. Update ALL fields affected by the correction (e.g. if denomination changes, also update weight, diameter, estimatedValue, rarity, historicalContext). Keep correct fields unchanged. All text MUST be in Ukrainian.`
     : hasBothSides
       ? `Two images of the same coin are provided: the first is the obverse (heads), the second is the reverse (tails). Use BOTH images together to identify the coin as precisely as possible. ${COIN_VISUAL_HINTS} Also check whether the images are actually in the correct order — if the first image appears to be the reverse and the second the obverse, set imagesSwapped=true. All text fields MUST be in Ukrainian.`
       : `Identify this coin from the image. ${COIN_VISUAL_HINTS} All text fields MUST be in Ukrainian.`;
+
+const buildCoinUserPrompt = (isRefinement: boolean, hasBothSides: boolean, correction?: string, previousResult?: object, hint = "") =>
+  buildCoinUserPromptBase(isRefinement, hasBothSides, correction, previousResult) + buildCoinHintBlock(hint);
 
 /**
  * Extracts the JSON object an OpenAI-compatible chat completion returned, stripping any
@@ -374,6 +387,7 @@ app.get("/api/ollama-models", requireAuth, async (req, res) => {
 // API: Recognize coin via Gemini or OpenAI (auto-detected by model prefix)
 app.post("/api/recognize-coin", requireAuth, async (req, res) => {
   const { image, imageReverse, correction, previousResult, model, lmStudioUrl, lmStudioToken, ollamaUrl } = req.body;
+  const hint = sanitizeCoinHint(req.body.hint);
   const modelName: string = model || "gemini-2.0-flash";
   if (!image) return res.status(400).json({ error: "Зображення не передано" });
 
@@ -405,7 +419,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
       const hasBothSides = userContent.length > 1;
       userContent.push({
         type: "text",
-        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult)
+        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult, hint)
           + `\n\nПоверни ТІЛЬКИ JSON-об'єкт з такими полями:\n${COIN_JSON_FIELDS}\nБез markdown, без пояснень — лише JSON.`,
       });
 
@@ -445,7 +459,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
       const hasBothSides = userContent.length > 1;
       userContent.push({
         type: "text",
-        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult)
+        text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult, hint)
           + `\n\nПоверни ТІЛЬКИ JSON-об'єкт з полями:\n${COIN_JSON_FIELDS}\nБез markdown, без пояснень — лише JSON.`,
       });
 
@@ -486,7 +500,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
       }
 
       const hasBothSides = userContent.length > 1;
-      userContent.push({ type: "text", text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult) });
+      userContent.push({ type: "text", text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult, hint) });
 
       const coinSchema = {
         type: "object",
@@ -557,7 +571,7 @@ app.post("/api/recognize-coin", requireAuth, async (req, res) => {
     }
 
     const hasBothSides = imageParts.length === 2;
-    const textPart = { text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult) };
+    const textPart = { text: buildCoinUserPrompt(isRefinement, hasBothSides, correction, previousResult, hint) };
 
     const response = await ai.models.generateContent({
       model: modelName,

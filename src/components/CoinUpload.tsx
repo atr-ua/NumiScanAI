@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { Camera, Upload, AlertCircle, RefreshCw, Sparkles, StopCircle, X } from "lucide-react";
+import { Camera, Upload, AlertCircle, RefreshCw, Sparkles, StopCircle, X, ClipboardList } from "lucide-react";
 
 interface CoinUploadProps {
-  onRecognize: (obverse: string, reverse?: string) => Promise<void>;
+  onRecognize: (obverse: string, reverse?: string, hint?: string) => Promise<void>;
   isRecognizing: boolean;
   recognitionError: string | null;
 }
@@ -21,6 +21,7 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
   const [cameraTarget, setCameraTarget] = useState<Slot | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<Slot | null>(null);
+  const [hint, setHint] = useState("");
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -116,9 +117,18 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
     if (e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0], slot);
   };
 
+  // Both photos removed = the user moved on to another coin; a stale note would silently
+  // steer the next recognition, so drop it together with the images.
+  useEffect(() => {
+    if (!obverseImage && !reverseImage) setHint("");
+  }, [obverseImage, reverseImage]);
+
+  const trimmedHint = hint.trim();
+
   const handleRecognizeClick = () => {
-    if (obverseImage) onRecognize(obverseImage, reverseImage ?? undefined);
-    else if (reverseImage) onRecognize(reverseImage);
+    const sentHint = trimmedHint || undefined;
+    if (obverseImage) onRecognize(obverseImage, reverseImage ?? undefined, sentHint);
+    else if (reverseImage) onRecognize(reverseImage, undefined, sentHint);
   };
 
   const handleBothFiles = (files: FileList) => {
@@ -248,6 +258,22 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
             className="hidden"
             onChange={(e) => { if (e.target.files) handleBothFiles(e.target.files); }}
           />
+
+          {/* Owner's free-text note that sharpens recognition */}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest flex items-center gap-1.5">
+              <ClipboardList className="h-3 w-3 text-[#D4AF37]/70" />
+              Уточнення до розпізнавання <span className="normal-case tracking-normal text-white/25">(необов'язково)</span>
+            </span>
+            <textarea
+              value={hint}
+              onChange={(e) => setHint(e.target.value)}
+              placeholder="Те, що ви бачите чіткіше за фото: країна, номінал, рік, період, метал, знак двору, виміряний діаметр/вага…"
+              maxLength={1000}
+              rows={2}
+              className="bg-black/40 border border-white/10 focus:border-[#D4AF37]/50 rounded-xl px-3 py-2 text-xs text-white placeholder:text-white/20 outline-none transition-colors resize-y"
+            />
+          </label>
         </>
       )}
 
@@ -266,6 +292,7 @@ export default function CoinUpload({ onRecognize, isRecognizing, recognitionErro
               {obverseImage && reverseImage
                 ? "Сканувати обидві сторони (AI)"
                 : "Сканувати за допомогою AI (Gemini)"}
+              {trimmedHint && " + уточнення"}
             </>
           )}
         </button>

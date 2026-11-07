@@ -118,7 +118,7 @@ export default function App() {
   };
 
   // Perform Gemini AI Coin recognition
-  const handleRecognizeCoin = async (obverse: string, reverse?: string) => {
+  const handleRecognizeCoin = async (obverse: string, reverse?: string, hint?: string) => {
     setIsRecognizing(true);
     setRecognitionError(null);
     setRecentRecognized(null);
@@ -128,7 +128,7 @@ export default function App() {
       const res = await fetch("/api/recognize-coin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: obverse, imageReverse: reverse, model: selectedModel, lmStudioUrl: localStorage.getItem("lmStudioUrl") || "", lmStudioToken: localStorage.getItem("lmStudioToken") || "", ollamaUrl: localStorage.getItem("ollamaUrl") || "" }),
+        body: JSON.stringify({ image: obverse, imageReverse: reverse, hint, model: selectedModel, lmStudioUrl: localStorage.getItem("lmStudioUrl") || "", lmStudioToken: localStorage.getItem("lmStudioToken") || "", ollamaUrl: localStorage.getItem("ollamaUrl") || "" }),
       });
 
       if (!res.ok) {
