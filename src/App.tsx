@@ -231,19 +231,6 @@ export default function App() {
     setCoins((prev) => prev.map((c) => (c.id === updatedCoin.id ? coinForList : c)));
   };
 
-  const handleReorderCoins = async (ids: string[]) => {
-    try {
-      await fetch("/api/coins/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      await fetchCoins();
-    } catch (err) {
-      console.error("Помилка сортування:", err);
-    }
-  };
-
   // Catalog statistics metrics
   const estimatedSilverCount = coins.filter((c) => (c.metal || "").toLowerCase().includes("срібл")).length;
   const estimatedGoldCount = coins.filter((c) => (c.metal || "").toLowerCase().includes("золот")).length;
@@ -413,7 +400,6 @@ export default function App() {
                 canEdit={canEdit}
                 onDeleteCoin={handleDeleteCoin}
                 onUpdateCoin={handleUpdateCoin}
-                onReorderCoins={handleReorderCoins}
                 countryFilter={countryFilter}
                 onClearCountryFilter={() => setCountryFilter(undefined)}
                 onFilteredCoinsChange={setFilteredCatalogCoins}
